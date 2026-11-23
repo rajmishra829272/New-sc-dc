@@ -1,9 +1,9 @@
 {
   "name": "messenger-bot-247",
   "version": "1.0.0",
-  "description": "24/7 Messenger Bot using meta-messenger.js with cookie-based login",
+  "description": "24/7 Messenger Bot using meta-messenger.js",
+  "type": "module",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
     "dev": "DEBUG=1 node index.js"
@@ -16,13 +16,6 @@
     "meta-messenger.js": "^1.1.0",
     "ws": "^8.18.0"
   },
-  "keywords": [
-    "messenger",
-    "bot",
-    "meta-messenger",
-    "24-7",
-    "cookie-login"
-  ],
   "author": "RAJ MISHRA",
   "license": "MIT"
 }
