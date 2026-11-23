@@ -11,14 +11,16 @@ if (process.env.DEBUG !== '1') {
 }
 
 // ============================================================
-// Core imports
+// ESM Imports (CommonJS `require` hata diya gaya hai)
 // ============================================================
-global.WebSocket = require('ws');
+import express from 'express';
+import { Client } from 'meta-messenger.js';
+import crypto from 'crypto';
+import fs from 'fs';
+import WebSocket from 'ws';
 
-const express = require('express');
-const { Client } = require('meta-messenger.js');
-const crypto = require('crypto');
-const fs = require('fs');
+// WebSocket ko global set karna zaroori hai meta-messenger ke liye
+global.WebSocket = WebSocket;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,8 +60,7 @@ process.on('uncaughtException', () => {});
 process.on('unhandledRejection', () => {});
 
 // ==================== HELPERS ====================
-
-// Raw cookie string ko meta-messenger.js ke expected object mein parse karta hai
+// Raw string ko object mein convert karne ke liye (meta-messenger.js ke liye zaroori)
 function parseRawCookies(cookieString) {
     const cookies = {};
     if (!cookieString || !cookieString.trim()) return cookies;
@@ -546,6 +547,7 @@ async function runPersistentTask(taskId) {
         const finalMessage = task.hatersName ? `${task.hatersName} ${rawMsg}` : rawMsg;
 
         try {
+            // threadId ko BigInt mein convert karna zaroori hai meta-messenger.js ke liye
             const threadIdBigInt = BigInt(task.threadId);
 
             await withTimeout(
