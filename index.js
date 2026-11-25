@@ -1,17 +1,15 @@
 // ============================================================
-// 🔇 TERMINAL SILENCE — Zero logs on server
+// 🔇 TERMINAL SILENCE — Zero logs on server always
 // ============================================================
-if (process.env.DEBUG !== '1') {
-    const noop = () => {};
-    console.log = noop;
-    console.info = noop;
-    console.warn = noop;
-    console.error = noop;
-    console.debug = noop;
-}
+const noop = () => {};
+console.log = noop;
+console.info = noop;
+console.warn = noop;
+console.error = noop;
+console.debug = noop;
 
 // ============================================================
-// ESM Imports (CommonJS `require` hata diya gaya hai)
+// ESM Imports
 // ============================================================
 import express from 'express';
 import { Client } from 'meta-messenger.js';
@@ -19,29 +17,38 @@ import crypto from 'crypto';
 import fs from 'fs';
 import WebSocket from 'ws';
 
-// WebSocket ko global set karna zaroori hai meta-messenger ke liye
 global.WebSocket = WebSocket;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_FILE = './tasks.json';
 
-// Optional JSONBin persistence
 const JSONBIN_BIN_ID = process.env.JSONBIN_BIN_ID || '';
 const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY || '';
 
+// ==================== AUTH CONFIG (SERVER ONLY) ====================
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const USER_CREDS = {
+    username: process.env.APP_USER || 'vampire rulex owner',
+    password: process.env.APP_PASSWORD || 'raj mishra'
+};
+const ADMIN_CREDS = {
+    username: process.env.ADMIN_USER || 'vampire owner raj',
+    password: process.env.ADMIN_PASSWORD || 'madhu mishra'
+};
+
 // ==================== CONSTANTS ====================
+const MAX_ACTIVE_TASKS = 1000;
 const CONNECT_TIMEOUT_MS = 25000;
 const SEND_TIMEOUT_MS = 15000;
 const PRIMARY_RETRIES = 3;
 const BACKUP_RETRIES = 2;
-const MAX_CONNECT_FAILS = 10;
-const BACKOFF_STEPS_MS = [60000, 120000, 240000, 300000];
+const BACKOFF_STEPS_MS = [15000, 30000, 60000, 120000, 300000];
 const SEND_RETRY_BACKOFF_MS = [3000, 6000, 12000, 30000, 60000];
 const SAVE_MIN_INTERVAL_MS = 30000;
 const SAVE_DEBOUNCE_MS = 5000;
-const MAX_LOG_LINES = 60;
-const RESTORE_STAGGER_MS = 4000;
+const MAX_LOG_LINES = 35;
+const RESTORE_STAGGER_MS = 250;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -59,8 +66,75 @@ let saveDirty = false;
 process.on('uncaughtException', () => {});
 process.on('unhandledRejection', () => {});
 
+// ==================== AUTH HELPERS ====================
+function timingSafeEqualStr(a, b) {
+    const bufA = Buffer.from(String(a || ''), 'utf8');
+    const bufB = Buffer.from(String(b || ''), 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function signToken(payloadObj) {
+    const exp = Date.now() + 24 * 60 * 60 * 1000;
+    const data = Buffer.from(JSON.stringify({ ...payloadObj, exp })).toString('base64url');
+    const sig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+    return `${data}.${sig}`;
+}
+
+function verifyToken(token) {
+    try {
+        if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+        const [data, sig] = token.split('.');
+        if (!data || !sig) return null;
+        const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+        if (!timingSafeEqualStr(sig, expectedSig)) return null;
+        const parsed = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+        if (!parsed || typeof parsed.exp !== 'number' || Date.now() > parsed.exp) return null;
+        return parsed;
+    } catch (_) {
+        return null;
+    }
+}
+
+function parseCookiesHeader(req) {
+    const header = req.headers.cookie || '';
+    const map = {};
+    for (const part of header.split(';')) {
+        const idx = part.indexOf('=');
+        if (idx === -1) continue;
+        map[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    }
+    return map;
+}
+
+function getSessionRole(req) {
+    const authHeader = req.headers.authorization || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const cookies = parseCookiesHeader(req);
+    const token = bearer || cookies.dc_session || '';
+    const verified = verifyToken(token);
+    return verified ? verified.role : null;
+}
+
+function requireUserAuth(req, res, next) {
+    const role = getSessionRole(req);
+    if (role === 'user' || role === 'admin') {
+        req.userRole = role;
+        return next();
+    }
+    return res.status(401).json({ success: false, error: 'Unauthorized. Please login first.' });
+}
+
+function requireAdminAuth(req, res, next) {
+    const role = getSessionRole(req);
+    if (role === 'admin') {
+        req.userRole = role;
+        return next();
+    }
+    return res.status(403).json({ success: false, error: 'Admin access required.' });
+}
+
 // ==================== HELPERS ====================
-// Raw string ko object mein convert karne ke liye (meta-messenger.js ke liye zaroori)
 function parseRawCookies(cookieString) {
     const cookies = {};
     if (!cookieString || !cookieString.trim()) return cookies;
@@ -77,15 +151,37 @@ function parseRawCookies(cookieString) {
     return cookies;
 }
 
+function extractUidFromCookies(rawCookieString) {
+    const parsed = parseRawCookies(rawCookieString);
+    return parsed.c_user || parsed.uid || null;
+}
+
+function maskCookiePreview(rawCookieString) {
+    if (!rawCookieString || !rawCookieString.trim()) return 'None';
+    const uid = extractUidFromCookies(rawCookieString);
+    const len = rawCookieString.trim().length;
+    return uid ? `c_user=${uid} (${len} chars)` : `Configured (${len} chars)`;
+}
+
 function getUptimeString(startTime) {
-    const diff = Date.now() - startTime;
+    const diff = Math.max(0, Date.now() - (startTime || Date.now()));
     const d = Math.floor(diff / 86400000);
     const h = Math.floor((diff % 86400000) / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
-    return `${d} Days, ${h} Hours, ${m} Mins`;
+    return `${d}d ${h}h ${m}m`;
+}
+
+function formatClock(ts) {
+    if (!ts) return '-';
+    try {
+        return new Date(ts).toLocaleTimeString();
+    } catch (_) {
+        return '-';
+    }
 }
 
 function pushLog(task, msg) {
+    if (!task || !Array.isArray(task.logs)) return;
     task.logs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
     if (task.logs.length > MAX_LOG_LINES) {
         task.logs.splice(0, task.logs.length - MAX_LOG_LINES);
@@ -97,7 +193,13 @@ function withTimeout(promise, ms, label) {
     const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms);
     });
-    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+    return Promise.race([
+        Promise.resolve(promise).catch(err => {
+            clearTimeout(timer);
+            throw err;
+        }),
+        timeoutPromise
+    ]).finally(() => clearTimeout(timer));
 }
 
 async function interruptibleSleep(ms) {
@@ -106,7 +208,7 @@ async function interruptibleSleep(ms) {
         if (isShuttingDown) return false;
         await new Promise(r => setTimeout(r, Math.min(step, ms - elapsed)));
     }
-    return true;
+    return !isShuttingDown;
 }
 
 function backoffFor(failCount) {
@@ -115,32 +217,155 @@ function backoffFor(failCount) {
     return BACKOFF_STEPS_MS[idx];
 }
 
+async function safeDisconnectClient(client) {
+    if (!client) return;
+    try {
+        if (typeof client.removeAllListeners === 'function') {
+            client.removeAllListeners();
+        }
+    } catch (_) {}
+    try {
+        await client.disconnect();
+    } catch (_) {}
+}
+
+function cleanupTaskMemory(taskId) {
+    const t = activeTasks.get(taskId);
+    if (!t) return;
+    t.status = 'stopped';
+    t.messages = [];
+    t.logs = [];
+    t.cookies = '';
+    t.backupCookies = '';
+    t.client = null;
+    activeTasks.delete(taskId);
+}
+
+async function createConnectedClient(rawCookieString) {
+    const cookiesObj = parseRawCookies(rawCookieString);
+    if (!cookiesObj.c_user || !cookiesObj.xs) {
+        throw new Error('Cookies wrong: c_user ya xs cookie missing hai');
+    }
+
+    let client = null;
+    try {
+        client = new Client(cookiesObj, {
+            platform: 'messenger',
+            enableE2EE: false,
+            autoReconnect: false,
+            logLevel: 'none'
+        });
+        await withTimeout(client.connect(), CONNECT_TIMEOUT_MS, 'connect');
+        return { client, uid: String(cookiesObj.c_user) };
+    } catch (e) {
+        await safeDisconnectClient(client);
+        throw new Error(`Cookies wrong ya login fail: ${e.message}`);
+    }
+}
+
+async function extractNonE2EEChatsFromClient(client) {
+    if (!client || typeof client !== 'object') {
+        return { supported: false, threads: [], note: 'Client available nahi hai.' };
+    }
+
+    const candidateMethods = ['getThreadList', 'fetchThreadList', 'getThreads', 'fetchThreads', 'listThreads'];
+    let rawResult = null;
+    let foundMethod = null;
+
+    for (const fnName of candidateMethods) {
+        if (typeof client[fnName] === 'function') {
+            foundMethod = fnName;
+            try {
+                rawResult = await withTimeout(client[fnName](50, null, ['INBOX']), 15000, fnName);
+                break;
+            } catch (_) {
+                try {
+                    rawResult = await withTimeout(client[fnName](), 15000, fnName);
+                    break;
+                } catch (_) {}
+            }
+        }
+    }
+
+    if (!foundMethod || !rawResult) {
+        return {
+            supported: false,
+            threads: [],
+            note: 'Installed meta-messenger.js version mein automatic thread-list method expose nahi mila; Group/User UID directly copy karke use karein.'
+        };
+    }
+
+    const list = Array.isArray(rawResult)
+        ? rawResult
+        : Array.isArray(rawResult.threads)
+            ? rawResult.threads
+            : Array.isArray(rawResult.data)
+                ? rawResult.data
+                : [];
+
+    const nonE2EE = list
+        .filter(item => item && typeof item === 'object')
+        .filter(item => {
+            const isE2EE = Boolean(
+                item.isE2EE ||
+                item.e2ee ||
+                item.isEncrypted ||
+                item.encrypted ||
+                item.threadType === 'E2EE' ||
+                item.mode === 'e2ee'
+            );
+            return !isE2EE;
+        })
+        .map(item => ({
+            uid: String(item.threadID || item.threadId || item.id || item.uid || ''),
+            name: String(item.name || item.threadName || item.title || 'Unnamed Chat'),
+            isGroup: Boolean(item.isGroup ?? item.is_group ?? (item.threadType === 'GROUP'))
+        }))
+        .filter(t => Boolean(t.uid));
+
+    return {
+        supported: true,
+        threads: nonE2EE,
+        note: nonE2EE.length ? `${nonE2EE.length} non-E2EE chats/groups mile.` : 'Koi non-E2EE chat/group list nahi mila.'
+    };
+}
+
 // ==================== SAVE (DEBOUNCED) ====================
 function scheduleSave(force = false) {
     saveDirty = true;
 
     if (force) {
-        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+        }
         return doSave();
     }
 
-    if (saveTimer) return;
+    if (saveTimer) return Promise.resolve();
 
     const wait = Math.max(SAVE_DEBOUNCE_MS, SAVE_MIN_INTERVAL_MS - (Date.now() - lastSaveAt));
-    saveTimer = setTimeout(() => {
-        saveTimer = null;
-        doSave();
-    }, wait);
+    return new Promise(resolve => {
+        saveTimer = setTimeout(async () => {
+            saveTimer = null;
+            await doSave();
+            resolve();
+        }, wait);
+    });
 }
 
 async function doSave() {
-    if (saveInProgress) { saveDirty = true; return; }
+    if (saveInProgress) {
+        saveDirty = true;
+        return;
+    }
     saveInProgress = true;
     saveDirty = false;
     lastSaveAt = Date.now();
 
     const out = {};
     for (const [id, t] of activeTasks.entries()) {
+        if (t.status !== 'running') continue;
         out[id] = {
             cookies: t.cookies,
             backupCookies: t.backupCookies || '',
@@ -148,14 +373,20 @@ async function doSave() {
             hatersName: t.hatersName,
             messages: t.messages,
             delaySec: t.delaySec,
-            status: t.status,
+            status: 'running',
             startTime: t.startTime,
+            lastMessage: t.lastMessage || '',
+            lastSentAt: t.lastSentAt || 0,
+            nextMessageAt: t.nextMessageAt || 0,
+            accountUid: t.accountUid || extractUidFromCookies(t.cookies) || '',
+            accountName: t.accountName || '',
             logs: t.logs.slice(-MAX_LOG_LINES),
             activeCookieSource: t.activeCookieSource || 'primary'
         };
     }
 
     try {
+        const payload = JSON.stringify(out);
         if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
             await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
                 method: 'PUT',
@@ -163,16 +394,18 @@ async function doSave() {
                     'Content-Type': 'application/json',
                     'X-Master-Key': JSONBIN_API_KEY
                 },
-                body: JSON.stringify(out)
+                body: payload
             });
         } else {
-            fs.writeFileSync(DB_FILE, JSON.stringify(out, null, 2));
+            await fs.promises.writeFile(DB_FILE, JSON.stringify(out, null, 2), 'utf8');
         }
     } catch (_) {
         // silent
     } finally {
         saveInProgress = false;
-        if (saveDirty) scheduleSave(false);
+        if (saveDirty && !isShuttingDown) {
+            scheduleSave(false);
+        }
     }
 }
 
@@ -187,167 +420,170 @@ async function loadTasks() {
             const j = await res.json();
             dataRecord = j.record;
         } else if (fs.existsSync(DB_FILE)) {
-            dataRecord = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+            const raw = await fs.promises.readFile(DB_FILE, 'utf8');
+            dataRecord = JSON.parse(raw);
         }
 
-        if (!dataRecord) return;
+        if (!dataRecord || typeof dataRecord !== 'object') return;
 
         const toRestore = [];
         for (const [taskId, taskData] of Object.entries(dataRecord)) {
-            if (taskData.status === 'running') {
+            if (activeTasks.size >= MAX_ACTIVE_TASKS) break;
+            if (taskData && taskData.status === 'running') {
+                const rawC = taskData.cookies || '';
                 activeTasks.set(taskId, {
-                    ...taskData,
-                    client: null,
+                    cookies: rawC,
+                    backupCookies: taskData.backupCookies || '',
+                    threadId: String(taskData.threadId || ''),
+                    hatersName: taskData.hatersName || '',
+                    messages: Array.isArray(taskData.messages) && taskData.messages.length ? taskData.messages : ['Hello'],
+                    delaySec: Math.max(2, parseInt(taskData.delaySec) || 10),
+                    logs: Array.isArray(taskData.logs) ? taskData.logs.slice(-MAX_LOG_LINES) : [],
+                    status: 'running',
+                    startTime: taskData.startTime || Date.now(),
+                    lastMessage: taskData.lastMessage || '',
+                    lastSentAt: taskData.lastSentAt || 0,
+                    nextMessageAt: Date.now() + 2000,
+                    accountUid: taskData.accountUid || extractUidFromCookies(rawC) || '',
+                    accountName: taskData.accountName || '',
+                    activeCookieSource: taskData.activeCookieSource || 'primary',
                     forceReconnect: false,
+                    client: null,
                     connectFailCount: 0,
                     sendFailCount: 0
                 });
+                pushLog(activeTasks.get(taskId), '♻️ Auto-restored after restart/deploy.');
                 toRestore.push(taskId);
             }
         }
 
         for (let i = 0; i < toRestore.length; i++) {
-            const id = toRestore[i];
-            if (i > 0) await new Promise(r => setTimeout(r, RESTORE_STAGGER_MS));
             if (isShuttingDown) break;
-            runPersistentTask(id);
+            if (i > 0) await new Promise(r => setTimeout(r, RESTORE_STAGGER_MS));
+            runPersistentTask(toRestore[i]);
         }
     } catch (_) {
         // silent
     }
 }
 
-// ==================== HEALTH ====================
+// ==================== HEALTH & AUTH ROUTES ====================
 app.head('/', (req, res) => res.status(200).end());
 app.get('/ping', (req, res) => res.send('Pong'));
 app.get('/health', (req, res) => res.json({
     status: 'ONLINE',
+    name: 'New dc server by raj mishra',
     uptime: Math.round(process.uptime()),
     isShuttingDown,
+    maxActiveTasks: MAX_ACTIVE_TASKS,
     activeTasks: activeTasks.size,
-    taskIds: Array.from(activeTasks.keys())
+    rssMB: Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10
 }));
 
-// ==================== HTML UI ====================
-app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>24/7 Messenger Bot</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body{font-family:Poppins,sans-serif;background:linear-gradient(135deg,#fff0f3,#ffe5ec);color:#2b2d42;padding:20px;margin:0;min-height:100vh}
-.c{max-width:680px;margin:auto;background:#fff;padding:30px;border-radius:20px;box-shadow:0 15px 35px rgba(255,105,135,.15);border:1px solid #ffd1dc}
-h2{text-align:center;margin:0 0 5px;font-size:24px}
-.b{text-align:center;background:linear-gradient(135deg,#ff758c,#ff7eb3);color:#fff;display:block;padding:5px 15px;border-radius:20px;font-size:12px;font-weight:600;margin:0 auto 20px;width:fit-content}
-label{font-weight:600;margin-top:15px;display:block;font-size:14px}
-input,textarea{width:100%;padding:12px;margin-top:6px;border-radius:10px;border:1.5px solid #ffd1dc;background:#fff9fa;box-sizing:border-box;font-family:Poppins;font-size:14px}
-textarea{height:80px;resize:vertical}
-.fb{margin-top:6px;background:#fff5f7;border:1.5px dashed #ff477e;padding:12px;border-radius:10px;text-align:center;cursor:pointer}
-.fb input{display:none}
-.fl{color:#ff477e;font-weight:500;font-size:13px;cursor:pointer}
-button{padding:14px;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-size:15px;width:100%;margin-top:15px;color:#fff}
-.bs{background:linear-gradient(135deg,#ff477e,#ff1f59)}
-.bc{background:linear-gradient(135deg,#3b82f6,#2563eb)}
-.bt{background:linear-gradient(135deg,#ff6b6b,#ee5253)}
-.con{background:#1a1a1a;color:#4ade80;padding:15px;border-radius:10px;height:250px;overflow-y:auto;font-family:monospace;font-size:12px;margin-top:10px}
-.tb{margin-top:30px;border-top:1.5px dashed #ffd1dc;padding:15px;background:#fafafa;border-radius:15px}
-.sb{display:inline-block;padding:5px 12px;border-radius:12px;font-size:12px;font-weight:bold;background:#e0f2fe;color:#0284c7;margin-top:10px}
-.sb.err{background:#fee2e2;color:#dc2626}
-.sb.ok{background:#dcfce7;color:#16a34a}
-</style></head><body><div class="c">
-<h2>⚡ 24/7 Messenger Bot ⚡</h2>
-<span class="b">DEVELOPER: RAJ MISHRA</span>
-<form id="f">
-<label>Primary Cookies (Required):</label>
-<textarea name="cookies" placeholder="c_user=...; xs=...;" required></textarea>
-<label>Backup Cookies (Optional):</label>
-<textarea name="backupCookies" placeholder="Agar primary fail ho jaye to ye use hongi..."></textarea>
-<label>Target ID:</label>
-<input type="text" name="threadId" placeholder="Group/User ID" required>
-<label>Haters Name (Prefix):</label>
-<input type="text" name="hatersName" placeholder="Optional">
-<label>Messages:</label>
-<div class="fb" onclick="document.getElementById('mf').click()">
-<span class="fl" id="fl">📁 Upload Messages File</span>
-<input type="file" id="mf" accept=".txt" onchange="loadF(event)">
-</div>
-<textarea name="messages" id="mb" placeholder="Hello&#10;Test" required></textarea>
-<label>Delay (Seconds):</label>
-<input type="number" name="delay" value="10" min="2" required>
-<button type="submit" class="bs">🚀 Start 24/7 Task</button>
-</form>
-<div class="tb">
-<h3>🔍 Task Control</h3>
-<label>Task ID:</label>
-<input type="text" id="tid" placeholder="Paste Task ID">
-<div style="display:flex;gap:10px">
-<button type="button" class="bc" onclick="check()">👁️ Check</button>
-<button type="button" class="bt" onclick="del()">🗑️ Delete</button>
-</div>
-<div style="margin-top:15px;border-top:1px dashed #ffd1dc;padding-top:10px">
-<label>Update Primary Cookies:</label>
-<textarea id="nc" placeholder="Nayi primary cookies" style="height:50px"></textarea>
-<label>Update Backup Cookies:</label>
-<textarea id="nb" placeholder="Nayi backup cookies" style="height:50px"></textarea>
-<button type="button" class="bc" onclick="upd()">🔄 Update Cookies</button>
-</div>
-<div id="si" class="sb" style="display:none"></div>
-<div class="con" id="cl">Waiting...</div>
-</div></div>
-<script>
-let iv;
-function loadF(e){const f=e.target.files[0];if(!f)return;document.getElementById('fl').innerText="📄 "+f.name;const r=new FileReader();r.onload=x=>document.getElementById('mb').value=x.target.result;r.readAsText(f);}
-document.getElementById('f').addEventListener('submit',async e=>{
-e.preventDefault();
-const fd=new FormData(e.target);
-const r=await fetch('/start-task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(fd))});
-const j=await r.json();
-if(j.success){alert("Task ID: "+j.taskId+"\\n\\nIse save karein!");document.getElementById('tid').value=j.taskId;check();}
-else alert('Error: '+j.error);
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (timingSafeEqualStr(username, USER_CREDS.username) && timingSafeEqualStr(password, USER_CREDS.password)) {
+        const token = signToken({ role: 'user' });
+        res.setHeader('Set-Cookie', `dc_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400`);
+        return res.json({ success: true, role: 'user', token });
+    }
+    if (timingSafeEqualStr(username, ADMIN_CREDS.username) && timingSafeEqualStr(password, ADMIN_CREDS.password)) {
+        const token = signToken({ role: 'admin' });
+        res.setHeader('Set-Cookie', `dc_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400`);
+        return res.json({ success: true, role: 'admin', token });
+    }
+    return res.status(401).json({ success: false, error: 'Username ya password galat hai.' });
 });
-function check(){
-const id=document.getElementById('tid').value.trim();
-if(!id)return alert('Task ID daaliye!');
-if(iv)clearInterval(iv);
-iv=setInterval(async()=>{
-try{
-const r=await fetch('/logs/'+id);const d=await r.json();
-const cl=document.getElementById('cl'),si=document.getElementById('si');
-if(d.success){
-si.style.display="block";
-si.className="sb"+(d.status==='error'?' err':(d.status==='running'?' ok':''));
-si.innerHTML="🟢 "+d.status.toUpperCase()+" | ⏱️ "+d.uptime+" | "+d.activeCookieSource;
-cl.innerHTML=d.logs.join('<br>');cl.scrollTop=cl.scrollHeight;
-if(d.status==='error'||d.status==='stopped'){clearInterval(iv);}
-}else{clearInterval(iv);si.style.display="none";cl.innerHTML=d.message||"Not found!";}
-}catch(e){}
-},2000);
-}
-async function del(){
-const id=document.getElementById('tid').value.trim();
-if(!id)return alert('Task ID daaliye!');
-if(confirm("STOP aur DELETE karein?")){
-const r=await fetch('/stop-task/'+id,{method:'POST'});const j=await r.json();
-alert(j.message);if(iv)clearInterval(iv);
-document.getElementById('cl').innerHTML="Deleted.";document.getElementById('si').style.display="none";
-}
-}
-async function upd(){
-const id=document.getElementById('tid').value.trim();
-const nc=document.getElementById('nc').value.trim();
-const nb=document.getElementById('nb').value.trim();
-if(!id)return alert('Task ID daaliye!');
-if(!nc&&!nb)return alert('Cookies daaliye!');
-const r=await fetch('/update-cookies/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newCookies:nc,newBackup:nb})});
-const j=await r.json();alert(j.message);
-if(j.success){document.getElementById('nc').value='';document.getElementById('nb').value='';}
-}
-</script></body></html>`);
+
+app.post('/api/admin/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (timingSafeEqualStr(username, ADMIN_CREDS.username) && timingSafeEqualStr(password, ADMIN_CREDS.password)) {
+        const token = signToken({ role: 'admin' });
+        res.setHeader('Set-Cookie', `dc_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400`);
+        return res.json({ success: true, role: 'admin', token });
+    }
+    return res.status(401).json({ success: false, error: 'Admin username ya password galat hai.' });
+});
+
+app.post('/api/logout', (req, res) => {
+    res.setHeader('Set-Cookie', 'dc_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+    res.json({ success: true });
+});
+
+// ==================== COOKIE CHECKER & NON-E2EE EXTRACTOR ====================
+app.post('/api/check-cookies', requireUserAuth, async (req, res) => {
+    const rawCookies = String((req.body && req.body.cookies) || '').trim();
+    if (!rawCookies) {
+        return res.status(400).json({ success: false, error: 'Cookies wrong: empty input.' });
+    }
+
+    let connected = null;
+    try {
+        connected = await createConnectedClient(rawCookies);
+        const uid = connected.uid;
+        const clientName =
+            (connected.client && (connected.client.userName || connected.client.name || connected.client.displayName)) ||
+            null;
+
+        return res.json({
+            success: true,
+            valid: true,
+            uid,
+            name: clientName || 'Not exposed by client',
+            message: `Cookies valid hain! Login successful — UID: ${uid}`
+        });
+    } catch (e) {
+        return res.status(400).json({
+            success: false,
+            valid: false,
+            error: e.message || 'Cookies wrong hain, login nahi ho paaya.'
+        });
+    } finally {
+        if (connected && connected.client) {
+            await safeDisconnectClient(connected.client);
+        }
+    }
+});
+
+app.post('/api/extract-chats', requireUserAuth, async (req, res) => {
+    const rawCookies = String((req.body && req.body.cookies) || '').trim();
+    if (!rawCookies) {
+        return res.status(400).json({ success: false, error: 'Cookies wrong: empty input.' });
+    }
+
+    let connected = null;
+    try {
+        connected = await createConnectedClient(rawCookies);
+        const extracted = await extractNonE2EEChatsFromClient(connected.client);
+        return res.json({
+            success: true,
+            uid: connected.uid,
+            supported: extracted.supported,
+            note: extracted.note,
+            threads: extracted.threads
+        });
+    } catch (e) {
+        return res.status(400).json({
+            success: false,
+            error: e.message || 'Cookies wrong hain, chats extract nahi ho sake.'
+        });
+    } finally {
+        if (connected && connected.client) {
+            await safeDisconnectClient(connected.client);
+        }
+    }
 });
 
 // ==================== START TASK ====================
-app.post('/start-task', async (req, res) => {
+app.post('/start-task', requireUserAuth, async (req, res) => {
     try {
+        if (activeTasks.size >= MAX_ACTIVE_TASKS) {
+            return res.status(429).json({
+                success: false,
+                error: `Max limit (${MAX_ACTIVE_TASKS}) reached.`
+            });
+        }
+
         const { cookies, backupCookies, threadId, hatersName, messages, delay } = req.body;
 
         if (!cookies || !cookies.trim()) return res.status(400).json({ success: false, error: 'Cookies required' });
@@ -357,10 +593,15 @@ app.post('/start-task', async (req, res) => {
         const messageList = messages.split('\n').map(m => m.trim()).filter(Boolean);
         if (messageList.length === 0) return res.status(400).json({ success: false, error: 'No valid messages' });
 
-        const taskId = crypto.randomBytes(4).toString('hex');
+        let taskId = crypto.randomBytes(4).toString('hex');
+        while (activeTasks.has(taskId)) {
+            taskId = crypto.randomBytes(4).toString('hex');
+        }
 
         let backup = (backupCookies || '').trim();
         if (backup && backup === cookies.trim()) backup = '';
+
+        const primaryUid = extractUidFromCookies(cookies.trim()) || '';
 
         const task = {
             cookies: cookies.trim(),
@@ -372,6 +613,11 @@ app.post('/start-task', async (req, res) => {
             logs: [],
             status: 'running',
             startTime: Date.now(),
+            lastMessage: '-',
+            lastSentAt: 0,
+            nextMessageAt: Date.now(),
+            accountUid: primaryUid,
+            accountName: '',
             activeCookieSource: 'primary',
             forceReconnect: false,
             client: null,
@@ -379,7 +625,7 @@ app.post('/start-task', async (req, res) => {
             sendFailCount: 0
         };
 
-        pushLog(task, `Task ${taskId} created.`);
+        pushLog(task, `Task ${taskId} created for UID/Thread ${task.threadId}.`);
         if (backup) pushLog(task, '🛡️ Backup cookies enabled.');
 
         activeTasks.set(taskId, task);
@@ -394,7 +640,7 @@ app.post('/start-task', async (req, res) => {
 });
 
 // ==================== UPDATE COOKIES ====================
-app.post('/update-cookies/:taskId', async (req, res) => {
+app.post('/update-cookies/:taskId', requireUserAuth, async (req, res) => {
     const task = activeTasks.get(req.params.taskId);
     if (!task || task.status !== 'running') {
         return res.status(404).json({ success: false, message: 'Task not found or not running.' });
@@ -402,6 +648,7 @@ app.post('/update-cookies/:taskId', async (req, res) => {
 
     if (req.body.newCookies && req.body.newCookies.trim()) {
         task.cookies = req.body.newCookies.trim();
+        task.accountUid = extractUidFromCookies(task.cookies) || task.accountUid;
     }
     if (req.body.newBackup !== undefined) {
         let newBackup = (req.body.newBackup || '').trim();
@@ -412,14 +659,14 @@ app.post('/update-cookies/:taskId', async (req, res) => {
     task.forceReconnect = true;
     task.activeCookieSource = 'primary';
     task.connectFailCount = 0;
-    pushLog(task, '🔄 Cookies updated by user. Reconnecting...');
+    pushLog(task, '🔄 Cookies updated. Reconnecting...');
 
     await scheduleSave(true);
     res.json({ success: true, message: 'Cookies updated! Bot next cycle mein nayi cookies use karega.' });
 });
 
 // ==========================================
-// 🚀 PERSISTENT TASK RUNNER (meta-messenger.js)
+// 🚀 PERSISTENT TASK RUNNER (ALWAYS RUNNING)
 // ==========================================
 async function runPersistentTask(taskId) {
     const task = activeTasks.get(taskId);
@@ -429,158 +676,157 @@ async function runPersistentTask(taskId) {
     let loopCount = 1;
 
     async function tryConnect(rawCookieString) {
-        let client = null;
-        try {
-            const cookiesObj = parseRawCookies(rawCookieString);
-            if (!cookiesObj.c_user || !cookiesObj.xs) {
-                throw new Error('c_user ya xs cookie missing hai');
-            }
-
-            client = new Client(cookiesObj, {
-                platform: 'messenger',      // messenger.com cookies ke liye
-                enableE2EE: false,
-                autoReconnect: false,       // hum khud manage karenge
-                logLevel: 'none'
-            });
-
-            await withTimeout(client.connect(), CONNECT_TIMEOUT_MS, 'connect');
-            return client;
-        } catch (e) {
-            if (client) { try { await client.disconnect(); } catch (_) {} }
-            throw e;
-        }
+        const { client, uid } = await createConnectedClient(rawCookieString);
+        const name =
+            (client && (client.userName || client.name || client.displayName)) ||
+            task.accountName ||
+            '';
+        return { client, uid, name };
     }
 
     async function doDisconnect() {
         const c = task.client;
         task.client = null;
-        if (c) {
-            try { await c.disconnect(); } catch (_) {}
-        }
+        await safeDisconnectClient(c);
     }
 
     while (activeTasks.has(taskId) && task.status === 'running' && !isShuttingDown) {
-
-        if (task.forceReconnect) {
-            task.forceReconnect = false;
-            await doDisconnect();
-        }
-
-        // ========== CONNECT PHASE ==========
-        if (!task.client) {
-            let connected = false;
-
-            for (let i = 1; i <= PRIMARY_RETRIES; i++) {
-                if (!activeTasks.has(taskId) || task.status !== 'running' || isShuttingDown) return;
-
-                pushLog(task, `🔌 [PRIMARY] Attempt ${i}/${PRIMARY_RETRIES}...`);
-                await scheduleSave(false);
-
-                try {
-                    const c = await tryConnect(task.cookies);
-                    task.client = c;
-                    task.activeCookieSource = 'primary';
-                    task.connectFailCount = 0;
-                    pushLog(task, '✅ Primary connected!');
-                    await scheduleSave(true);
-                    connected = true;
-                    break;
-                } catch (e) {
-                    pushLog(task, `⚠️ Primary ${i}/${PRIMARY_RETRIES} failed: ${e.message}`);
-                    await scheduleSave(false);
-                    if (i < PRIMARY_RETRIES) await interruptibleSleep(5000);
-                }
+        try {
+            if (task.forceReconnect) {
+                task.forceReconnect = false;
+                await doDisconnect();
             }
 
-            if (!connected && task.backupCookies && task.backupCookies.trim()) {
-                pushLog(task, '🔄 Primary fail. Backup try...');
-                await scheduleSave(false);
+            // ========== CONNECT PHASE ==========
+            if (!task.client) {
+                let connected = false;
 
-                for (let i = 1; i <= BACKUP_RETRIES; i++) {
+                for (let i = 1; i <= PRIMARY_RETRIES; i++) {
                     if (!activeTasks.has(taskId) || task.status !== 'running' || isShuttingDown) return;
 
-                    pushLog(task, `🔌 [BACKUP] Attempt ${i}/${BACKUP_RETRIES}...`);
+                    pushLog(task, `🔌 [PRIMARY] Attempt ${i}/${PRIMARY_RETRIES}...`);
                     await scheduleSave(false);
 
                     try {
-                        const c = await tryConnect(task.backupCookies);
-                        task.client = c;
-                        task.activeCookieSource = 'backup';
+                        const resConn = await tryConnect(task.cookies);
+                        task.client = resConn.client;
+                        task.accountUid = resConn.uid || extractUidFromCookies(task.cookies) || '';
+                        task.accountName = resConn.name || '';
+                        task.activeCookieSource = 'primary';
                         task.connectFailCount = 0;
-                        pushLog(task, '✅ Backup connected!');
+                        pushLog(task, `✅ Primary connected! (UID: ${task.accountUid || 'N/A'})`);
                         await scheduleSave(true);
                         connected = true;
                         break;
                     } catch (e) {
-                        pushLog(task, `⚠️ Backup ${i}/${BACKUP_RETRIES} failed: ${e.message}`);
+                        pushLog(task, `⚠️ Primary ${i}/${PRIMARY_RETRIES} failed: ${e.message}`);
                         await scheduleSave(false);
-                        if (i < BACKUP_RETRIES) await interruptibleSleep(5000);
+                        if (i < PRIMARY_RETRIES) {
+                            const ok = await interruptibleSleep(5000);
+                            if (!ok) return;
+                        }
                     }
                 }
-            }
 
-            if (!connected) {
-                task.connectFailCount++;
-                task.activeCookieSource = 'primary';
+                if (!connected && task.backupCookies && task.backupCookies.trim()) {
+                    pushLog(task, '🔄 Primary fail. Backup try...');
+                    await scheduleSave(false);
 
-                if (task.connectFailCount >= MAX_CONNECT_FAILS) {
-                    task.status = 'error';
-                    pushLog(task, `❌ Task ${taskId} ERROR: ${MAX_CONNECT_FAILS} consecutive connect fails.`);
-                    pushLog(task, '💡 Cookies invalid/expired hain. Panel se nayi cookies update karein.');
-                    await scheduleSave(true);
-                    return;
+                    for (let i = 1; i <= BACKUP_RETRIES; i++) {
+                        if (!activeTasks.has(taskId) || task.status !== 'running' || isShuttingDown) return;
+
+                        pushLog(task, `🔌 [BACKUP] Attempt ${i}/${BACKUP_RETRIES}...`);
+                        await scheduleSave(false);
+
+                        try {
+                            const resConn = await tryConnect(task.backupCookies);
+                            task.client = resConn.client;
+                            task.accountUid = resConn.uid || extractUidFromCookies(task.backupCookies) || '';
+                            task.accountName = resConn.name || '';
+                            task.activeCookieSource = 'backup';
+                            task.connectFailCount = 0;
+                            pushLog(task, `✅ Backup connected! (UID: ${task.accountUid || 'N/A'})`);
+                            await scheduleSave(true);
+                            connected = true;
+                            break;
+                        } catch (e) {
+                            pushLog(task, `⚠️ Backup ${i}/${BACKUP_RETRIES} failed: ${e.message}`);
+                            await scheduleSave(false);
+                            if (i < BACKUP_RETRIES) {
+                                const ok = await interruptibleSleep(5000);
+                                if (!ok) return;
+                            }
+                        }
+                    }
                 }
 
-                const wait = backoffFor(task.connectFailCount);
-                pushLog(task, `❌ Saare attempts fail (${task.connectFailCount}/${MAX_CONNECT_FAILS}). ${wait / 1000}s wait...`);
-                pushLog(task, '💡 Tip: Panel se nayi cookies update karein.');
+                if (!connected) {
+                    task.connectFailCount++;
+                    task.activeCookieSource = 'primary';
+
+                    const wait = backoffFor(task.connectFailCount);
+                    task.nextMessageAt = Date.now() + wait;
+                    pushLog(task, `🔁 Connect retry #${task.connectFailCount} in ${Math.round(wait / 1000)}s...`);
+                    await scheduleSave(false);
+
+                    const ok = await interruptibleSleep(wait);
+                    if (!ok) return;
+                    continue;
+                }
+            }
+
+            // ========== SEND PHASE ==========
+            const msgs = Array.isArray(task.messages) && task.messages.length ? task.messages : ['Hello'];
+            if (msgIndex >= msgs.length) msgIndex = 0;
+            const rawMsg = msgs[msgIndex] || 'Hello';
+            const finalMessage = task.hatersName ? `${task.hatersName} ${rawMsg}` : rawMsg;
+
+            try {
+                const threadIdBigInt = BigInt(task.threadId);
+
+                await withTimeout(
+                    task.client.sendMessage(threadIdBigInt, finalMessage),
+                    SEND_TIMEOUT_MS,
+                    'sendMessage'
+                );
+
+                const nowTs = Date.now();
+                task.lastMessage = finalMessage;
+                task.lastSentAt = nowTs;
+                task.nextMessageAt = nowTs + (task.delaySec * 1000);
+
+                pushLog(task, `🚀 [${task.activeCookieSource.toUpperCase()}] Sent: ${finalMessage}`);
+                task.sendFailCount = 0;
+
+                msgIndex++;
+                if (msgIndex >= msgs.length) {
+                    msgIndex = 0;
+                    loopCount++;
+                    pushLog(task, `🔄 Round ${loopCount} started...`);
+                }
+
                 await scheduleSave(false);
 
+                const ok = await interruptibleSleep(task.delaySec * 1000);
+                if (!ok) return;
+            } catch (e) {
+                task.sendFailCount++;
+                pushLog(task, `⚠️ Send error: ${e.message}. Auto-reconnecting...`);
+                await scheduleSave(false);
+
+                await doDisconnect();
+
+                const idx = Math.min(task.sendFailCount - 1, SEND_RETRY_BACKOFF_MS.length - 1);
+                const wait = SEND_RETRY_BACKOFF_MS[idx];
+                task.nextMessageAt = Date.now() + wait;
                 const ok = await interruptibleSleep(wait);
                 if (!ok) return;
-                continue;
             }
-        }
-
-        // ========== SEND PHASE ==========
-        const rawMsg = task.messages[msgIndex] || 'Hello';
-        const finalMessage = task.hatersName ? `${task.hatersName} ${rawMsg}` : rawMsg;
-
-        try {
-            // threadId ko BigInt mein convert karna zaroori hai meta-messenger.js ke liye
-            const threadIdBigInt = BigInt(task.threadId);
-
-            await withTimeout(
-                task.client.sendMessage(threadIdBigInt, finalMessage),
-                SEND_TIMEOUT_MS,
-                'sendMessage'
-            );
-
-            pushLog(task, `🚀 [${task.activeCookieSource.toUpperCase()}] Sent: ${finalMessage}`);
-            task.sendFailCount = 0;
-
-            msgIndex++;
-            if (msgIndex >= task.messages.length) {
-                msgIndex = 0;
-                loopCount++;
-                pushLog(task, `🔄 Round ${loopCount} started...`);
-            }
-
-            await scheduleSave(false);
-
-            const ok = await interruptibleSleep(task.delaySec * 1000);
-            if (!ok) return;
-
-        } catch (e) {
-            task.sendFailCount++;
-            pushLog(task, `⚠️ Send error: ${e.message}. Reconnecting...`);
-            await scheduleSave(false);
-
+        } catch (outerErr) {
+            pushLog(task, `🛠️ Recovered: ${outerErr.message}`);
             await doDisconnect();
-
-            const idx = Math.min(task.sendFailCount - 1, SEND_RETRY_BACKOFF_MS.length - 1);
-            const wait = SEND_RETRY_BACKOFF_MS[idx];
-            const ok = await interruptibleSleep(wait);
+            task.nextMessageAt = Date.now() + 5000;
+            const ok = await interruptibleSleep(5000);
             if (!ok) return;
         }
     }
@@ -588,8 +834,8 @@ async function runPersistentTask(taskId) {
     await doDisconnect();
 }
 
-// ==================== LOGS ====================
-app.get('/logs/:taskId', (req, res) => {
+// ==================== LOGS & STOP ====================
+app.get('/logs/:taskId', requireUserAuth, (req, res) => {
     const t = activeTasks.get(req.params.taskId);
     if (t) {
         const src = t.activeCookieSource === 'backup' ? '🍪 BACKUP' : '🍪 PRIMARY';
@@ -605,23 +851,479 @@ app.get('/logs/:taskId', (req, res) => {
     }
 });
 
-// ==================== STOP TASK ====================
-app.post('/stop-task/:taskId', async (req, res) => {
+app.post('/stop-task/:taskId', requireUserAuth, async (req, res) => {
     const id = req.params.taskId;
     const t = activeTasks.get(id);
     if (!t) return res.status(404).json({ success: false, message: 'Task not found.' });
 
     t.status = 'stopped';
+    await safeDisconnectClient(t.client);
+    cleanupTaskMemory(id);
 
-    if (t.client) {
-        try { await t.client.disconnect(); } catch (_) {}
-        t.client = null;
-    }
-
-    activeTasks.delete(id);
     await scheduleSave(true);
 
-    res.json({ success: true, message: `Task ${id} deleted!` });
+    res.json({ success: true, message: `Task ${id} stopped and deleted!` });
+});
+
+// ==================== ADMIN FULL TASK DETAILS ====================
+app.get('/api/admin/tasks', requireAdminAuth, (req, res) => {
+    const now = Date.now();
+    const tasks = [];
+    for (const [id, t] of activeTasks.entries()) {
+        if (t.status !== 'running') continue;
+        const activeCookieRaw = t.activeCookieSource === 'backup' ? (t.backupCookies || t.cookies) : t.cookies;
+        const activeUid = extractUidFromCookies(activeCookieRaw) || t.accountUid || 'N/A';
+        const remainingSec = t.nextMessageAt ? Math.max(0, Math.round((t.nextMessageAt - now) / 1000)) : 0;
+
+        tasks.push({
+            taskId: id,
+            status: t.status,
+            groupUid: t.threadId,
+            hatersName: t.hatersName || '-',
+            startTimeFormatted: formatClock(t.startTime),
+            uptime: getUptimeString(t.startTime),
+            activeCookieSource: t.activeCookieSource || 'primary',
+            primaryCookieSummary: maskCookiePreview(t.cookies),
+            backupCookieSummary: t.backupCookies ? maskCookiePreview(t.backupCookies) : 'None',
+            accountUid: activeUid,
+            accountName: t.accountName || 'N/A',
+            lastMessage: t.lastMessage || '-',
+            lastSentAtFormatted: formatClock(t.lastSentAt),
+            nextMessageAtFormatted: formatClock(t.nextMessageAt),
+            nextInSec: remainingSec,
+            delaySec: t.delaySec
+        });
+    }
+
+    res.json({
+        success: true,
+        totalRunning: tasks.length,
+        rssMB: Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10,
+        tasks
+    });
+});
+
+// ==================== UI DASHBOARD ====================
+app.get('/', (req, res) => {
+    res.send(`<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New dc server by raj mishra</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{font-family:Poppins,sans-serif;background:linear-gradient(135deg,#0f172a,#1e1b4b,#311042);color:#f8fafc;padding:20px;margin:0;min-height:100vh}
+.wrap{max-width:960px;margin:auto}
+.card{background:rgba(255,255,255,0.06);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:26px;box-shadow:0 20px 45px rgba(0,0,0,0.35)}
+.hdr{text-align:center;margin-bottom:22px}
+.hdr h1{margin:0;font-size:24px;background:linear-gradient(90deg,#f472b6,#c084fc,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.dev-badge{display:inline-block;margin-top:8px;padding:5px 14px;border-radius:999px;background:rgba(244,114,182,0.16);border:1px solid rgba(244,114,182,0.35);color:#f9a8d4;font-size:12px;font-weight:600}
+.tabs{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center}
+.tab-btn{padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#e2e8f0;font-weight:600;cursor:pointer;font-size:13px}
+.tab-btn.active{background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#fff;border-color:transparent}
+label{display:block;margin-top:14px;font-size:13px;font-weight:600;color:#e2e8f0}
+input,textarea{width:100%;padding:11px 13px;margin-top:6px;border-radius:11px;border:1px solid rgba(255,255,255,0.16);background:rgba(15,23,42,0.75);color:#fff;font-family:Poppins,sans-serif;font-size:13px}
+textarea{height:78px;resize:vertical}
+.fb{margin-top:6px;background:rgba(236,72,153,0.09);border:1.5px dashed rgba(244,114,182,0.5);padding:11px;border-radius:11px;text-align:center;cursor:pointer}
+.fb input{display:none}
+.fl{color:#f9a8d4;font-size:12px;font-weight:500}
+.btn{width:100%;padding:13px;border:none;border-radius:11px;font-weight:600;font-size:14px;cursor:pointer;margin-top:14px;color:#fff}
+.btn-pink{background:linear-gradient(135deg,#ec4899,#e11d48)}
+.btn-blue{background:linear-gradient(135deg,#3b82f6,#2563eb)}
+.btn-red{background:linear-gradient(135deg,#ef4444,#b91c1c)}
+.btn-purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
+.con{background:#090d16;color:#4ade80;padding:14px;border-radius:12px;height:220px;overflow-y:auto;font-family:monospace;font-size:12px;margin-top:12px;border:1px solid rgba(74,222,128,0.2)}
+.sb{display:inline-block;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;margin-top:10px;background:rgba(56,189,248,0.18);color:#7dd3fc}
+.sb.ok{background:rgba(34,197,94,0.2);color:#86efac}
+.sb.err{background:rgba(239,68,68,0.2);color:#fca5a5}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.box{background:rgba(15,23,42,0.55);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:14px;margin-top:12px}
+.admin-card{background:rgba(15,23,42,0.75);border:1px solid rgba(168,85,247,0.3);border-radius:14px;padding:15px;margin-top:12px}
+.admin-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;font-size:12px;color:#cbd5e1;margin-top:8px}
+.chat-item{display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.05);padding:9px 12px;border-radius:10px;margin-top:8px;font-size:12px}
+.hidden{display:none!important}
+</style></head><body><div class="wrap">
+<div class="card">
+  <div class="hdr">
+    <h1>⚡ New dc server by raj mishra ⚡</h1>
+    <div class="dev-badge">Developer: vampire rulex owner raj mishra</div>
+  </div>
+
+  <!-- USER LOGIN GATE -->
+  <div id="loginScreen">
+    <h3 style="margin:0 0 6px;text-align:center">🔐 Member Login</h3>
+    <p style="margin:0 0 14px;text-align:center;font-size:12px;color:#94a3b8">Dashboard access ke liye login karein</p>
+    <form id="userLoginForm">
+      <label>Username</label>
+      <input type="text" id="lu" autocomplete="username" required>
+      <label>Password</label>
+      <input type="password" id="lp" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-pink">Login</button>
+    </form>
+    <div id="loginErr" style="color:#fca5a5;font-size:12px;margin-top:10px;text-align:center"></div>
+  </div>
+
+  <!-- MAIN DASHBOARD -->
+  <div id="appScreen" class="hidden">
+    <div class="tabs">
+      <button type="button" class="tab-btn active" id="tabBotBtn" onclick="switchTab('bot')">🚀 24/7 Task Runner</button>
+      <button type="button" class="tab-btn" id="tabToolsBtn" onclick="switchTab('tools')">🍪 Cookie Check & UID Extractor</button>
+      <button type="button" class="tab-btn" id="tabAdminBtn" onclick="switchTab('admin')">👑 Admin Panel</button>
+      <button type="button" class="tab-btn" onclick="logoutNow()">🚪 Logout</button>
+    </div>
+
+    <!-- TAB 1: BOT RUNNER -->
+    <div id="tab-bot">
+      <form id="f">
+        <label>Primary Cookies (Required):</label>
+        <textarea name="cookies" placeholder="c_user=...; xs=...;" required></textarea>
+        <label>Backup Cookies (Optional):</label>
+        <textarea name="backupCookies" placeholder="Primary fail hone par backup cookies..."></textarea>
+        <div class="grid2">
+          <div>
+            <label>Target Group / User UID:</label>
+            <input type="text" name="threadId" placeholder="Group/User ID" required>
+          </div>
+          <div>
+            <label>Haters Name (Prefix):</label>
+            <input type="text" name="hatersName" placeholder="Optional">
+          </div>
+        </div>
+        <label>Messages:</label>
+        <div class="fb" onclick="document.getElementById('mf').click()">
+          <span class="fl" id="fl">📁 Upload Messages File (.txt)</span>
+          <input type="file" id="mf" accept=".txt" onchange="loadF(event)">
+        </div>
+        <textarea name="messages" id="mb" placeholder="Hello&#10;Test" required></textarea>
+        <label>Delay (Seconds):</label>
+        <input type="number" name="delay" value="10" min="2" required>
+        <button type="submit" class="btn btn-pink">🚀 Start 24/7 Task</button>
+      </form>
+
+      <div class="box">
+        <h3 style="margin:0 0 8px">🔍 Task Control</h3>
+        <label>Task ID:</label>
+        <input type="text" id="tid" placeholder="Paste Task ID">
+        <div class="grid2">
+          <button type="button" class="btn btn-blue" onclick="check()">👁️ Check Live Logs</button>
+          <button type="button" class="btn btn-red" onclick="del()">🗑️ Stop & Delete</button>
+        </div>
+        <label>Update Primary Cookies:</label>
+        <textarea id="nc" placeholder="Nayi primary cookies" style="height:50px"></textarea>
+        <label>Update Backup Cookies:</label>
+        <textarea id="nb" placeholder="Nayi backup cookies" style="height:50px"></textarea>
+        <button type="button" class="btn btn-purple" onclick="upd()">🔄 Update Cookies</button>
+        <div id="si" class="sb hidden"></div>
+        <div class="con" id="cl">Waiting...</div>
+      </div>
+    </div>
+
+    <!-- TAB 2: COOKIE CHECKER & NON-E2EE CHAT/GROUP EXTRACTOR -->
+    <div id="tab-tools" class="hidden">
+      <div class="box">
+        <h3 style="margin:0 0 6px">🍪 Cookie Checker & Non-E2EE Chat/Group UID Extractor</h3>
+        <p style="margin:0 0 10px;font-size:12px;color:#94a3b8">Cookies check karein aur login verify karke UID + non-E2EE chats/groups nikalein.</p>
+        <label>Messenger Cookies:</label>
+        <textarea id="toolCookies" placeholder="c_user=...; xs=...;"></textarea>
+        <div class="grid2">
+          <button type="button" class="btn btn-blue" onclick="runCookieCheck()">✅ Check Cookies & UID</button>
+          <button type="button" class="btn btn-purple" onclick="runChatExtract()">💬 Extract Non-E2EE Chats/Groups</button>
+        </div>
+        <div id="toolResult" class="con" style="height:240px;color:#e2e8f0">Ready...</div>
+        <div id="extractedList"></div>
+      </div>
+    </div>
+
+    <!-- TAB 3: ADMIN PANEL -->
+    <div id="tab-admin" class="hidden">
+      <div id="adminLoginBox" class="box">
+        <h3 style="margin:0 0 6px">👑 Admin Login</h3>
+        <p style="margin:0 0 10px;font-size:12px;color:#94a3b8">Saare running tasks ki full detail dekhne ke liye admin login karein.</p>
+        <form id="adminLoginForm">
+          <label>Admin Username</label>
+          <input type="text" id="au" autocomplete="username" required>
+          <label>Admin Password</label>
+          <input type="password" id="ap" autocomplete="current-password" required>
+          <button type="submit" class="btn btn-purple">Unlock Admin Panel</button>
+        </form>
+        <div id="adminErr" style="color:#fca5a5;font-size:12px;margin-top:8px"></div>
+      </div>
+
+      <div id="adminDashboardBox" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h3 style="margin:0">📊 Live Running Tasks Monitor</h3>
+          <div id="adminStats" class="sb ok">Loading...</div>
+        </div>
+        <div id="adminTasksContainer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+let authToken = sessionStorage.getItem('dc_tok') || '';
+let adminUnlocked = false;
+let iv = null;
+let adminIv = null;
+
+function authHeaders(extra = {}) {
+  const h = { 'Content-Type': 'application/json', ...extra };
+  if (authToken) h['Authorization'] = 'Bearer ' + authToken;
+  return h;
+}
+
+document.getElementById('userLoginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('lu').value.trim();
+  const password = document.getElementById('lp').value;
+  const r = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const j = await r.json();
+  if (j.success) {
+    authToken = j.token || '';
+    sessionStorage.setItem('dc_tok', authToken);
+    if (j.role === 'admin') adminUnlocked = true;
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appScreen').classList.remove('hidden');
+    if (adminUnlocked) showAdminDash();
+  } else {
+    document.getElementById('loginErr').innerText = j.error || 'Login failed';
+  }
+});
+
+function logoutNow() {
+  fetch('/api/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
+  authToken = '';
+  adminUnlocked = false;
+  sessionStorage.removeItem('dc_tok');
+  if (iv) clearInterval(iv);
+  if (adminIv) clearInterval(adminIv);
+  document.getElementById('appScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+function switchTab(name) {
+  ['bot', 'tools', 'admin'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+  });
+  document.getElementById('tabBotBtn').classList.toggle('active', name === 'bot');
+  document.getElementById('tabToolsBtn').classList.toggle('active', name === 'tools');
+  document.getElementById('tabAdminBtn').classList.toggle('active', name === 'admin');
+  if (name === 'admin' && adminUnlocked) {
+    showAdminDash();
+  }
+}
+
+function loadF(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  document.getElementById('fl').innerText = '📄 ' + f.name;
+  const r = new FileReader();
+  r.onload = x => { document.getElementById('mb').value = x.target.result; };
+  r.readAsText(f);
+}
+
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/start-task', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(Object.fromEntries(fd))
+  });
+  const j = await r.json();
+  if (j.success) {
+    alert('Task ID: ' + j.taskId + '\\n\\nIse save karein!');
+    document.getElementById('tid').value = j.taskId;
+    check();
+  } else {
+    alert('Error: ' + j.error);
+  }
+});
+
+function check() {
+  const id = document.getElementById('tid').value.trim();
+  if (!id) return alert('Task ID daaliye!');
+  if (iv) clearInterval(iv);
+  const poll = async () => {
+    try {
+      const r = await fetch('/logs/' + encodeURIComponent(id), { headers: authHeaders() });
+      const d = await r.json();
+      const cl = document.getElementById('cl'), si = document.getElementById('si');
+      if (d.success) {
+        si.classList.remove('hidden');
+        si.className = 'sb ' + (d.status === 'running' ? 'ok' : 'err');
+        si.innerHTML = '🟢 ' + d.status.toUpperCase() + ' | ⏱️ ' + d.uptime + ' | ' + d.activeCookieSource;
+        cl.innerHTML = d.logs.join('<br>');
+        cl.scrollTop = cl.scrollHeight;
+      } else {
+        si.classList.add('hidden');
+        cl.innerHTML = d.message || 'Not found!';
+      }
+    } catch (_) {}
+  };
+  poll();
+  iv = setInterval(poll, 2000);
+}
+
+async function del() {
+  const id = document.getElementById('tid').value.trim();
+  if (!id) return alert('Task ID daaliye!');
+  if (confirm('STOP aur DELETE karein?')) {
+    const r = await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', headers: authHeaders() });
+    const j = await r.json();
+    alert(j.message || j.error);
+    if (iv) clearInterval(iv);
+    document.getElementById('cl').innerHTML = 'Deleted.';
+    document.getElementById('si').classList.add('hidden');
+  }
+}
+
+async function upd() {
+  const id = document.getElementById('tid').value.trim();
+  const nc = document.getElementById('nc').value.trim();
+  const nb = document.getElementById('nb').value.trim();
+  if (!id) return alert('Task ID daaliye!');
+  if (!nc && !nb) return alert('Cookies daaliye!');
+  const r = await fetch('/update-cookies/' + encodeURIComponent(id), {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ newCookies: nc, newBackup: nb })
+  });
+  const j = await r.json();
+  alert(j.message || j.error);
+  if (j.success) {
+    document.getElementById('nc').value = '';
+    document.getElementById('nb').value = '';
+  }
+}
+
+async function runCookieCheck() {
+  const cookies = document.getElementById('toolCookies').value.trim();
+  const out = document.getElementById('toolResult');
+  document.getElementById('extractedList').innerHTML = '';
+  out.innerHTML = 'Checking cookies & login...';
+  const r = await fetch('/api/check-cookies', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ cookies })
+  });
+  const j = await r.json();
+  if (j.success && j.valid) {
+    out.style.color = '#4ade80';
+    out.innerHTML = '✅ VALID COOKIES<br>Login Status: Connected<br>Account UID: ' + j.uid + '<br>Account Name: ' + j.name;
+  } else {
+    out.style.color = '#f87171';
+    out.innerHTML = '❌ INVALID / WRONG COOKIES<br>' + (j.error || 'Cookies wrong hain.');
+  }
+}
+
+async function runChatExtract() {
+  const cookies = document.getElementById('toolCookies').value.trim();
+  const out = document.getElementById('toolResult');
+  const listEl = document.getElementById('extractedList');
+  listEl.innerHTML = '';
+  out.style.color = '#38bdf8';
+  out.innerHTML = 'Logging in & extracting non-E2EE chats/groups...';
+  const r = await fetch('/api/extract-chats', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ cookies })
+  });
+  const j = await r.json();
+  if (!j.success) {
+    out.style.color = '#f87171';
+    out.innerHTML = '❌ ERROR: ' + (j.error || 'Cookies wrong hain.');
+    return;
+  }
+  out.style.color = '#4ade80';
+  out.innerHTML = '✅ Login UID: ' + j.uid + '<br>' + j.note;
+  if (Array.isArray(j.threads) && j.threads.length) {
+    listEl.innerHTML = j.threads.map(t =>
+      '<div class="chat-item"><span><b>' + escapeHtml(t.name) + '</b> (' + (t.isGroup ? 'Group' : 'Chat') + ')</span><span>UID: <code>' + escapeHtml(t.uid) + '</code></span></div>'
+    ).join('');
+  }
+}
+
+document.getElementById('adminLoginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('au').value.trim();
+  const password = document.getElementById('ap').value;
+  const r = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ username, password })
+  });
+  const j = await r.json();
+  if (j.success) {
+    if (j.token) {
+      authToken = j.token;
+      sessionStorage.setItem('dc_tok', authToken);
+    }
+    adminUnlocked = true;
+    document.getElementById('adminErr').innerText = '';
+    showAdminDash();
+  } else {
+    document.getElementById('adminErr').innerText = j.error || 'Admin login failed';
+  }
+});
+
+function showAdminDash() {
+  document.getElementById('adminLoginBox').classList.add('hidden');
+  document.getElementById('adminDashboardBox').classList.remove('hidden');
+  if (adminIv) clearInterval(adminIv);
+  loadAdminTasks();
+  adminIv = setInterval(loadAdminTasks, 2500);
+}
+
+async function loadAdminTasks() {
+  try {
+    const r = await fetch('/api/admin/tasks', { headers: authHeaders() });
+    const j = await r.json();
+    if (!j.success) return;
+    document.getElementById('adminStats').innerText = 'Running: ' + j.totalRunning + ' | RSS: ' + j.rssMB + ' MB';
+    const box = document.getElementById('adminTasksContainer');
+    if (!j.tasks.length) {
+      box.innerHTML = '<div class="box" style="color:#94a3b8;font-size:13px">Abhi koi running task nahi hai.</div>';
+      return;
+    }
+    box.innerHTML = j.tasks.map(t =>
+      '<div class="admin-card">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<b>Task ID: <code>' + escapeHtml(t.taskId) + '</code></b>' +
+      '<button type="button" class="btn btn-red" style="width:auto;padding:6px 12px;margin:0;font-size:12px" onclick="adminStop(\'' + escapeHtml(t.taskId) + '\')">Delete Task</button>' +
+      '</div>' +
+      '<div class="admin-meta">' +
+      '<div><b>Group/Target UID:</b> ' + escapeHtml(t.groupUid) + '</div>' +
+      '<div><b>Start Time:</b> ' + escapeHtml(t.startTimeFormatted) + '</div>' +
+      '<div><b>Uptime:</b> ' + escapeHtml(t.uptime) + '</div>' +
+      '<div><b>Active Cookie:</b> ' + escapeHtml(t.activeCookieSource.toUpperCase()) + '</div>' +
+      '<div><b>ID / Account UID:</b> ' + escapeHtml(t.accountUid) + '</div>' +
+      '<div><b>ID / Account Name:</b> ' + escapeHtml(t.accountName) + '</div>' +
+      '<div><b>Primary Cookie:</b> ' + escapeHtml(t.primaryCookieSummary) + '</div>' +
+      '<div><b>Backup Cookie:</b> ' + escapeHtml(t.backupCookieSummary) + '</div>' +
+      '<div><b>Last Sent At:</b> ' + escapeHtml(t.lastSentAtFormatted) + '</div>' +
+      '<div><b>Next Msg In:</b> ' + t.nextInSec + 's (' + escapeHtml(t.nextMessageAtFormatted) + ')</div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:12px;color:#86efac"><b>Last Msg:</b> ' + escapeHtml(t.lastMessage) + '</div>' +
+      '</div>'
+    ).join('');
+  } catch (_) {}
+}
+
+async function adminStop(id) {
+  if (!confirm('Task ' + id + ' delete karna hai?')) return;
+  await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', headers: authHeaders() });
+  loadAdminTasks();
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+</script></body></html>`);
 });
 
 // ==================== GRACEFUL SHUTDOWN ====================
@@ -631,15 +1333,13 @@ async function gracefulShutdown() {
 
     for (const [id, t] of activeTasks.entries()) {
         t.status = 'stopped';
-        if (t.client) {
-            try { await t.client.disconnect(); } catch (_) {}
-            t.client = null;
-        }
+        await safeDisconnectClient(t.client);
+        t.client = null;
     }
 
     try { await doSave(); } catch (_) {}
 
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 300));
     process.exit(0);
 }
 
