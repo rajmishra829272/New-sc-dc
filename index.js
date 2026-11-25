@@ -909,55 +909,41 @@ app.get('/api/admin/tasks', requireAdminAuth, (req, res) => {
 
 // ==================== UI DASHBOARD ====================
 app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8">
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>New dc server by raj mishra</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box}
 body{
-  font-family:Poppins,sans-serif;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   color:#2a1423;
-  padding:20px;
+  padding:18px;
   margin:0;
   min-height:100vh;
   background:
-    radial-gradient(circle at 12% 15%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 42%),
-    radial-gradient(circle at 88% 18%, rgba(255,158,199,0.72) 0%, rgba(255,158,199,0) 46%),
-    radial-gradient(circle at 75% 85%, rgba(255,214,229,0.9) 0%, rgba(255,214,229,0) 50%),
+    radial-gradient(circle at 12% 15%, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0) 44%),
+    radial-gradient(circle at 88% 18%, rgba(255,158,199,0.75) 0%, rgba(255,158,199,0) 48%),
+    radial-gradient(circle at 75% 85%, rgba(255,214,229,0.92) 0%, rgba(255,214,229,0) 52%),
     linear-gradient(135deg,#fff9fb 0%,#ffe3ed 38%,#fff2f6 70%,#ffd1e3 100%);
   background-attachment:fixed;
 }
 .wrap{max-width:960px;margin:auto}
 .card{
   position:relative;
-  overflow:hidden;
-  background:linear-gradient(165deg,rgba(255,255,255,0.88),rgba(255,242,247,0.82));
-  backdrop-filter:blur(18px);
-  border:2px solid rgba(255,255,255,0.92);
-  border-radius:26px;
-  padding:28px;
-  box-shadow:
-    0 22px 50px rgba(219,74,129,0.18),
-    inset 0 2px 3px rgba(255,255,255,0.95),
-    inset 0 -4px 12px rgba(255,166,198,0.22);
+  background:linear-gradient(165deg,rgba(255,255,255,0.9),rgba(255,242,247,0.85));
+  border:2px solid #ffffff;
+  border-radius:24px;
+  padding:24px;
+  box-shadow:0 20px 45px rgba(219,74,129,0.18),inset 0 2px 3px #ffffff;
 }
-.card::before{
-  content:"";
-  position:absolute;
-  top:-45%;
-  left:-25%;
-  width:150%;
-  height:75%;
-  background:linear-gradient(180deg,rgba(255,255,255,0.58) 0%,rgba(255,255,255,0) 100%);
-  transform:rotate(-6deg);
-  pointer-events:none;
-}
-.hdr{position:relative;text-align:center;margin-bottom:22px}
+.hdr{text-align:center;margin-bottom:20px}
 .hdr h1{
   margin:0;
-  font-size:25px;
-  font-weight:700;
+  font-size:24px;
+  font-weight:800;
   background:linear-gradient(90deg,#be185d,#ec4899,#9d174d);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
@@ -965,90 +951,78 @@ body{
 .dev-badge{
   display:inline-block;
   margin-top:8px;
-  padding:6px 16px;
+  padding:6px 15px;
   border-radius:999px;
   background:linear-gradient(135deg,#ffffff,#ffe6ef);
   border:1.5px solid rgba(236,72,153,0.35);
   color:#9d174d;
   font-size:12px;
-  font-weight:600;
-  box-shadow:0 6px 16px rgba(236,72,153,0.14);
+  font-weight:700;
 }
-.tabs{position:relative;display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;justify-content:center}
 .tab-btn{
-  padding:10px 16px;
-  border-radius:14px;
-  border:1.5px solid rgba(236,72,153,0.25);
+  padding:10px 14px;
+  border-radius:12px;
+  border:1.5px solid rgba(236,72,153,0.28);
   background:linear-gradient(180deg,#ffffff,#fff0f5);
   color:#5c223c;
-  font-weight:600;
+  font-weight:700;
   cursor:pointer;
   font-size:13px;
-  box-shadow:0 6px 14px rgba(236,72,153,0.1);
 }
 .tab-btn.active{
   background:linear-gradient(135deg,#ff4d8d,#d9266d);
   color:#ffffff;
   border-color:#ff85b3;
-  box-shadow:0 8px 20px rgba(217,38,109,0.28);
 }
-label{display:block;margin-top:14px;font-size:13px;font-weight:600;color:#4a192f}
+label{display:block;margin-top:12px;font-size:13px;font-weight:700;color:#4a192f}
 input,textarea{
   width:100%;
-  padding:11px 14px;
+  padding:11px 13px;
   margin-top:6px;
-  border-radius:13px;
-  border:1.5px solid rgba(244,114,182,0.42);
-  background:linear-gradient(180deg,#ffffff,#fff7fa);
+  border-radius:12px;
+  border:1.5px solid rgba(244,114,182,0.45);
+  background:#ffffff;
   color:#2a1423;
-  font-family:Poppins,sans-serif;
-  font-size:13px;
-  box-shadow:inset 0 2px 4px rgba(244,114,182,0.08);
+  font-size:14px;
 }
-input:focus,textarea:focus{
-  outline:none;
-  border-color:#ec4899;
-  box-shadow:0 0 0 3px rgba(236,72,153,0.16);
-}
-textarea{height:78px;resize:vertical}
+textarea{height:76px;resize:vertical}
 .fb{
   margin-top:6px;
-  background:linear-gradient(135deg,#ffffff,#ffeef4);
+  background:#fff5f9;
   border:1.5px dashed #ec4899;
-  padding:12px;
-  border-radius:13px;
+  padding:11px;
+  border-radius:12px;
   text-align:center;
   cursor:pointer;
 }
 .fb input{display:none}
-.fl{color:#be185d;font-size:12px;font-weight:600}
+.fl{color:#be185d;font-size:12px;font-weight:700}
 .btn{
   width:100%;
   padding:13px;
   border:none;
-  border-radius:13px;
-  font-weight:600;
+  border-radius:12px;
+  font-weight:700;
   font-size:14px;
   cursor:pointer;
   margin-top:14px;
   color:#ffffff;
-  box-shadow:0 8px 18px rgba(0,0,0,0.12),inset 0 1px 1px rgba(255,255,255,0.6);
 }
 .btn-pink{background:linear-gradient(135deg,#ff4d8d,#db2777)}
 .btn-blue{background:linear-gradient(135deg,#f472b6,#c026d3)}
 .btn-red{background:linear-gradient(135deg,#fb7185,#e11d48)}
 .btn-purple{background:linear-gradient(135deg,#a855f7,#db2777)}
 .con{
-  background:linear-gradient(180deg,#24101c,#180912);
+  background:#1c0b15;
   color:#86efac;
-  padding:14px;
-  border-radius:14px;
-  height:220px;
+  padding:13px;
+  border-radius:12px;
+  height:210px;
   overflow-y:auto;
   font-family:monospace;
   font-size:12px;
   margin-top:12px;
-  border:1.5px solid rgba(255,255,255,0.55);
 }
 .sb{
   display:inline-block;
@@ -1059,147 +1033,131 @@ textarea{height:78px;resize:vertical}
   margin-top:10px;
   background:#ffe4ef;
   color:#9d174d;
-  border:1px solid rgba(236,72,153,0.3);
 }
-.sb.ok{background:#dcfce7;color:#166534;border-color:#86efac}
-.sb.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.sb.ok{background:#dcfce7;color:#166534}
+.sb.err{background:#fee2e2;color:#991b1b}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .box{
-  position:relative;
-  background:linear-gradient(165deg,rgba(255,255,255,0.78),rgba(255,235,243,0.72));
-  border:1.5px solid rgba(255,255,255,0.9);
-  border-radius:18px;
-  padding:16px;
-  margin-top:14px;
-  box-shadow:0 10px 24px rgba(219,74,129,0.1);
-}
-.admin-card{
-  background:linear-gradient(165deg,#ffffff,#fff1f6);
-  border:1.5px solid rgba(236,72,153,0.32);
+  background:rgba(255,255,255,0.82);
+  border:1.5px solid #ffffff;
   border-radius:16px;
   padding:15px;
-  margin-top:12px;
-  box-shadow:0 8px 20px rgba(219,74,129,0.1);
+  margin-top:14px;
 }
-.admin-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;font-size:12px;color:#4a192f;margin-top:8px}
+.admin-card{
+  background:#ffffff;
+  border:1.5px solid rgba(236,72,153,0.35);
+  border-radius:14px;
+  padding:14px;
+  margin-top:12px;
+}
+.admin-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:8px;font-size:12px;color:#4a192f;margin-top:8px}
 .chat-item{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  background:rgba(255,255,255,0.85);
-  border:1px solid rgba(236,72,153,0.22);
+  background:#ffffff;
+  border:1px solid rgba(236,72,153,0.25);
   padding:9px 12px;
-  border-radius:12px;
+  border-radius:10px;
   margin-top:8px;
   font-size:12px;
-  color:#2a1423;
 }
 .hidden{display:none!important}
-</style></head><body><div class="wrap">
+</style>
+</head>
+<body>
+<div class="wrap">
 <div class="card">
   <div class="hdr">
     <h1>⚡ New dc server by raj mishra ⚡</h1>
     <div class="dev-badge">Developer: vampire rulex owner raj mishra</div>
   </div>
 
-  <!-- USER LOGIN GATE -->
   <div id="loginScreen">
     <h3 style="margin:0 0 6px;text-align:center;color:#5c1636">🔐 Member Login</h3>
-    <p style="margin:0 0 14px;text-align:center;font-size:12px;color:#7c3a58">Dashboard access ke liye login karein</p>
-    <form id="userLoginForm">
-      <label>Username</label>
-      <input type="text" id="lu" autocomplete="username" required>
-      <label>Password</label>
-      <input type="password" id="lp" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-pink">Login</button>
-    </form>
-    <div id="loginErr" style="color:#be123c;font-weight:600;font-size:12px;margin-top:10px;text-align:center"></div>
+    <label>Username</label>
+    <input type="text" id="lu" placeholder="Enter username">
+    <label>Password</label>
+    <input type="password" id="lp" placeholder="Enter password">
+    <button type="button" id="loginBtn" class="btn btn-pink">Login</button>
+    <div id="loginErr" style="color:#be123c;font-weight:700;font-size:13px;margin-top:10px;text-align:center"></div>
   </div>
 
-  <!-- MAIN DASHBOARD -->
   <div id="appScreen" class="hidden">
     <div class="tabs">
-      <button type="button" class="tab-btn active" id="tabBotBtn" onclick="switchTab('bot')">🚀 24/7 Task Runner</button>
-      <button type="button" class="tab-btn" id="tabToolsBtn" onclick="switchTab('tools')">🍪 Cookie Check & UID Extractor</button>
-      <button type="button" class="tab-btn" id="tabAdminBtn" onclick="switchTab('admin')">👑 Admin Panel</button>
-      <button type="button" class="tab-btn" onclick="logoutNow()">🚪 Logout</button>
+      <button type="button" class="tab-btn active" id="tabBotBtn">🚀 24/7 Task Runner</button>
+      <button type="button" class="tab-btn" id="tabToolsBtn">🍪 Cookie Check &amp; UID Extractor</button>
+      <button type="button" class="tab-btn" id="tabAdminBtn">👑 Admin Panel</button>
+      <button type="button" class="tab-btn" id="logoutBtn">🚪 Logout</button>
     </div>
 
-    <!-- TAB 1: BOT RUNNER -->
     <div id="tab-bot">
-      <form id="f">
-        <label>Primary Cookies (Required):</label>
-        <textarea name="cookies" placeholder="c_user=...; xs=...;" required></textarea>
-        <label>Backup Cookies (Optional):</label>
-        <textarea name="backupCookies" placeholder="Primary fail hone par backup cookies..."></textarea>
-        <div class="grid2">
-          <div>
-            <label>Target Group / User UID:</label>
-            <input type="text" name="threadId" placeholder="Group/User ID" required>
-          </div>
-          <div>
-            <label>Haters Name (Prefix):</label>
-            <input type="text" name="hatersName" placeholder="Optional">
-          </div>
+      <label>Primary Cookies (Required):</label>
+      <textarea id="t_cookies" placeholder="c_user=...; xs=...;"></textarea>
+      <label>Backup Cookies (Optional):</label>
+      <textarea id="t_backup" placeholder="Primary fail hone par backup cookies..."></textarea>
+      <div class="grid2">
+        <div>
+          <label>Target Group / User UID:</label>
+          <input type="text" id="t_thread" placeholder="Group/User ID">
         </div>
-        <label>Messages:</label>
-        <div class="fb" onclick="document.getElementById('mf').click()">
-          <span class="fl" id="fl">📁 Upload Messages File (.txt)</span>
-          <input type="file" id="mf" accept=".txt" onchange="loadF(event)">
+        <div>
+          <label>Haters Name (Prefix):</label>
+          <input type="text" id="t_haters" placeholder="Optional">
         </div>
-        <textarea name="messages" id="mb" placeholder="Hello&#10;Test" required></textarea>
-        <label>Delay (Seconds):</label>
-        <input type="number" name="delay" value="10" min="2" required>
-        <button type="submit" class="btn btn-pink">🚀 Start 24/7 Task</button>
-      </form>
+      </div>
+      <label>Messages:</label>
+      <div class="fb" id="fileBox">
+        <span class="fl" id="fl">📁 Upload Messages File (.txt)</span>
+        <input type="file" id="mf" accept=".txt">
+      </div>
+      <textarea id="mb" placeholder="Hello&#10;Test"></textarea>
+      <label>Delay (Seconds):</label>
+      <input type="number" id="t_delay" value="10" min="2">
+      <button type="button" id="startBtn" class="btn btn-pink">🚀 Start 24/7 Task</button>
 
       <div class="box">
         <h3 style="margin:0 0 8px;color:#5c1636">🔍 Task Control</h3>
         <label>Task ID:</label>
         <input type="text" id="tid" placeholder="Paste Task ID">
         <div class="grid2">
-          <button type="button" class="btn btn-blue" onclick="check()">👁️ Check Live Logs</button>
-          <button type="button" class="btn btn-red" onclick="del()">🗑️ Stop & Delete</button>
+          <button type="button" id="checkBtn" class="btn btn-blue">👁️ Check Live Logs</button>
+          <button type="button" id="delBtn" class="btn btn-red">🗑️ Stop &amp; Delete</button>
         </div>
         <label>Update Primary Cookies:</label>
         <textarea id="nc" placeholder="Nayi primary cookies" style="height:50px"></textarea>
         <label>Update Backup Cookies:</label>
         <textarea id="nb" placeholder="Nayi backup cookies" style="height:50px"></textarea>
-        <button type="button" class="btn btn-purple" onclick="upd()">🔄 Update Cookies</button>
+        <button type="button" id="updBtn" class="btn btn-purple">🔄 Update Cookies</button>
         <div id="si" class="sb hidden"></div>
         <div class="con" id="cl">Waiting...</div>
       </div>
     </div>
 
-    <!-- TAB 2: COOKIE CHECKER & NON-E2EE CHAT/GROUP EXTRACTOR -->
     <div id="tab-tools" class="hidden">
       <div class="box">
-        <h3 style="margin:0 0 6px;color:#5c1636">🍪 Cookie Checker & Non-E2EE Chat/Group UID Extractor</h3>
-        <p style="margin:0 0 10px;font-size:12px;color:#7c3a58">Cookies check karein aur login verify karke UID + non-E2EE chats/groups nikalein.</p>
+        <h3 style="margin:0 0 6px;color:#5c1636">🍪 Cookie Checker &amp; Non-E2EE Chat/Group UID Extractor</h3>
         <label>Messenger Cookies:</label>
         <textarea id="toolCookies" placeholder="c_user=...; xs=...;"></textarea>
         <div class="grid2">
-          <button type="button" class="btn btn-blue" onclick="runCookieCheck()">✅ Check Cookies & UID</button>
-          <button type="button" class="btn btn-purple" onclick="runChatExtract()">💬 Extract Non-E2EE Chats/Groups</button>
+          <button type="button" id="chkCookieBtn" class="btn btn-blue">✅ Check Cookies &amp; UID</button>
+          <button type="button" id="extChatBtn" class="btn btn-purple">💬 Extract Non-E2EE Chats/Groups</button>
         </div>
-        <div id="toolResult" class="con" style="height:240px;color:#e2e8f0">Ready...</div>
+        <div id="toolResult" class="con" style="height:220px;color:#e2e8f0">Ready...</div>
         <div id="extractedList"></div>
       </div>
     </div>
 
-    <!-- TAB 3: ADMIN PANEL -->
     <div id="tab-admin" class="hidden">
       <div id="adminLoginBox" class="box">
         <h3 style="margin:0 0 6px;color:#5c1636">👑 Admin Login</h3>
-        <p style="margin:0 0 10px;font-size:12px;color:#7c3a58">Saare running tasks ki full detail dekhne ke liye admin login karein.</p>
-        <form id="adminLoginForm">
-          <label>Admin Username</label>
-          <input type="text" id="au" autocomplete="username" required>
-          <label>Admin Password</label>
-          <input type="password" id="ap" autocomplete="current-password" required>
-          <button type="submit" class="btn btn-purple">Unlock Admin Panel</button>
-        </form>
-        <div id="adminErr" style="color:#be123c;font-weight:600;font-size:12px;margin-top:8px"></div>
+        <label>Admin Username</label>
+        <input type="text" id="au" placeholder="Enter admin username">
+        <label>Admin Password</label>
+        <input type="password" id="ap" placeholder="Enter admin password">
+        <button type="button" id="adminLoginBtn" class="btn btn-purple">Unlock Admin Panel</button>
+        <div id="adminErr" style="color:#be123c;font-weight:700;font-size:13px;margin-top:8px"></div>
       </div>
 
       <div id="adminDashboardBox" class="hidden">
@@ -1215,302 +1173,317 @@ textarea{height:78px;resize:vertical}
 </div>
 
 <script>
-let authToken = sessionStorage.getItem('dc_tok') || '';
-let adminUnlocked = false;
-let iv = null;
-let adminIv = null;
+(function() {
+  var authToken = '';
+  try { authToken = sessionStorage.getItem('dc_tok') || ''; } catch (e) {}
+  var adminUnlocked = false;
+  var iv = null;
+  var adminIv = null;
 
-function authHeaders(extra = {}) {
-  const h = { 'Content-Type': 'application/json', ...extra };
-  if (authToken) h['Authorization'] = 'Bearer ' + authToken;
-  return h;
-}
+  function authHeaders() {
+    var h = { 'Content-Type': 'application/json' };
+    if (authToken) h['Authorization'] = 'Bearer ' + authToken;
+    return h;
+  }
 
-document.getElementById('userLoginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const errEl = document.getElementById('loginErr');
-  errEl.innerText = 'Checking login...';
-
-  try {
-    const username = document.getElementById('lu').value.trim();
-    const password = document.getElementById('lp').value;
-    const r = await fetch('/api/login', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
     });
+  }
 
-    const text = await r.text();
-    let j = {};
-    try { j = JSON.parse(text); } catch (_) {
-      errEl.innerText = 'Server response invalid hai (Status ' + r.status + ').';
+  function switchTab(name) {
+    ['bot', 'tools', 'admin'].forEach(function(t) {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+    });
+    document.getElementById('tabBotBtn').classList.toggle('active', name === 'bot');
+    document.getElementById('tabToolsBtn').classList.toggle('active', name === 'tools');
+    document.getElementById('tabAdminBtn').classList.toggle('active', name === 'admin');
+    if (name === 'admin' && adminUnlocked) showAdminDash();
+  }
+
+  async function doUserLogin() {
+    var errEl = document.getElementById('loginErr');
+    var username = document.getElementById('lu').value.trim();
+    var password = document.getElementById('lp').value;
+    if (!username || !password) {
+      errEl.innerText = 'Username aur Password dono daaliye.';
       return;
     }
-
-    if (r.ok && j.success) {
-      authToken = j.token || '';
-      try { sessionStorage.setItem('dc_tok', authToken); } catch (_) {}
-      if (j.role === 'admin') adminUnlocked = true;
-      errEl.innerText = '';
-      document.getElementById('loginScreen').classList.add('hidden');
-      document.getElementById('appScreen').classList.remove('hidden');
-      if (adminUnlocked) showAdminDash();
-    } else {
-      errEl.innerText = j.error || ('Login failed (Status ' + r.status + ')');
-    }
-  } catch (err) {
-    errEl.innerText = 'Network/Request error: ' + err.message;
-  }
-});
-
-function logoutNow() {
-  fetch('/api/logout', { method: 'POST', credentials: 'same-origin', headers: authHeaders() }).catch(() => {});
-  authToken = '';
-  adminUnlocked = false;
-  try { sessionStorage.removeItem('dc_tok'); } catch (_) {}
-  if (iv) clearInterval(iv);
-  if (adminIv) clearInterval(adminIv);
-  document.getElementById('appScreen').classList.add('hidden');
-  document.getElementById('loginScreen').classList.remove('hidden');
-}
-
-function switchTab(name) {
-  ['bot', 'tools', 'admin'].forEach(t => {
-    document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
-  });
-  document.getElementById('tabBotBtn').classList.toggle('active', name === 'bot');
-  document.getElementById('tabToolsBtn').classList.toggle('active', name === 'tools');
-  document.getElementById('tabAdminBtn').classList.toggle('active', name === 'admin');
-  if (name === 'admin' && adminUnlocked) {
-    showAdminDash();
-  }
-}
-
-function loadF(e) {
-  const f = e.target.files[0];
-  if (!f) return;
-  document.getElementById('fl').innerText = '📄 ' + f.name;
-  const r = new FileReader();
-  r.onload = x => { document.getElementById('mb').value = x.target.result; };
-  r.readAsText(f);
-}
-
-document.getElementById('f').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/start-task', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    body: JSON.stringify(Object.fromEntries(fd))
-  });
-  const j = await r.json();
-  if (j.success) {
-    alert('Task ID: ' + j.taskId + '\\n\\nIse save karein!');
-    document.getElementById('tid').value = j.taskId;
-    check();
-  } else {
-    alert('Error: ' + j.error);
-  }
-});
-
-function check() {
-  const id = document.getElementById('tid').value.trim();
-  if (!id) return alert('Task ID daaliye!');
-  if (iv) clearInterval(iv);
-  const poll = async () => {
+    errEl.innerText = 'Logging in...';
     try {
-      const r = await fetch('/logs/' + encodeURIComponent(id), { credentials: 'same-origin', headers: authHeaders() });
-      const d = await r.json();
-      const cl = document.getElementById('cl'), si = document.getElementById('si');
-      if (d.success) {
-        si.classList.remove('hidden');
-        si.className = 'sb ' + (d.status === 'running' ? 'ok' : 'err');
-        si.innerHTML = '🟢 ' + d.status.toUpperCase() + ' | ⏱️ ' + d.uptime + ' | ' + d.activeCookieSource;
-        cl.innerHTML = d.logs.join('<br>');
-        cl.scrollTop = cl.scrollHeight;
+      var r = await fetch('/api/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username, password: password })
+      });
+      var j = await r.json();
+      if (r.ok && j.success) {
+        authToken = j.token || '';
+        try { sessionStorage.setItem('dc_tok', authToken); } catch (e) {}
+        if (j.role === 'admin') adminUnlocked = true;
+        errEl.innerText = '';
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('appScreen').classList.remove('hidden');
+        if (adminUnlocked) showAdminDash();
       } else {
-        si.classList.add('hidden');
-        cl.innerHTML = d.message || 'Not found!';
+        errEl.innerText = j.error || 'Username ya password galat hai.';
       }
-    } catch (_) {}
-  };
-  poll();
-  iv = setInterval(poll, 2000);
-}
+    } catch (err) {
+      errEl.innerText = 'Error: ' + err.message;
+    }
+  }
 
-async function del() {
-  const id = document.getElementById('tid').value.trim();
-  if (!id) return alert('Task ID daaliye!');
-  if (confirm('STOP aur DELETE karein?')) {
-    const r = await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: authHeaders() });
-    const j = await r.json();
+  document.getElementById('loginBtn').onclick = doUserLogin;
+  document.getElementById('lp').onkeydown = function(e) { if (e.key === 'Enter') doUserLogin(); };
+
+  document.getElementById('logoutBtn').onclick = function() {
+    fetch('/api/logout', { method: 'POST', credentials: 'same-origin', headers: authHeaders() }).catch(function() {});
+    authToken = '';
+    adminUnlocked = false;
+    try { sessionStorage.removeItem('dc_tok'); } catch (e) {}
+    if (iv) clearInterval(iv);
+    if (adminIv) clearInterval(adminIv);
+    document.getElementById('appScreen').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+  };
+
+  document.getElementById('tabBotBtn').onclick = function() { switchTab('bot'); };
+  document.getElementById('tabToolsBtn').onclick = function() { switchTab('tools'); };
+  document.getElementById('tabAdminBtn').onclick = function() { switchTab('admin'); };
+
+  document.getElementById('fileBox').onclick = function() { document.getElementById('mf').click(); };
+  document.getElementById('mf').onchange = function(e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    document.getElementById('fl').innerText = '📄 ' + f.name;
+    var r = new FileReader();
+    r.onload = function(x) { document.getElementById('mb').value = x.target.result; };
+    r.readAsText(f);
+  };
+
+  function checkLogs() {
+    var id = document.getElementById('tid').value.trim();
+    if (!id) return alert('Task ID daaliye!');
+    if (iv) clearInterval(iv);
+    var poll = async function() {
+      try {
+        var r = await fetch('/logs/' + encodeURIComponent(id), { credentials: 'same-origin', headers: authHeaders() });
+        var d = await r.json();
+        var cl = document.getElementById('cl'), si = document.getElementById('si');
+        if (d.success) {
+          si.classList.remove('hidden');
+          si.className = 'sb ' + (d.status === 'running' ? 'ok' : 'err');
+          si.innerHTML = '🟢 ' + d.status.toUpperCase() + ' | ⏱️ ' + d.uptime + ' | ' + d.activeCookieSource;
+          cl.innerHTML = d.logs.join('<br>');
+          cl.scrollTop = cl.scrollHeight;
+        } else {
+          si.classList.add('hidden');
+          cl.innerHTML = d.message || 'Not found!';
+        }
+      } catch (e) {}
+    };
+    poll();
+    iv = setInterval(poll, 2000);
+  }
+
+  document.getElementById('startBtn').onclick = async function() {
+    var payload = {
+      cookies: document.getElementById('t_cookies').value,
+      backupCookies: document.getElementById('t_backup').value,
+      threadId: document.getElementById('t_thread').value,
+      hatersName: document.getElementById('t_haters').value,
+      messages: document.getElementById('mb').value,
+      delay: document.getElementById('t_delay').value
+    };
+    var r = await fetch('/start-task', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    var j = await r.json();
+    if (j.success) {
+      alert('Task ID: ' + j.taskId + ' — Ise save karein!');
+      document.getElementById('tid').value = j.taskId;
+      checkLogs();
+    } else {
+      alert('Error: ' + j.error);
+    }
+  };
+
+  document.getElementById('checkBtn').onclick = checkLogs;
+
+  document.getElementById('delBtn').onclick = async function() {
+    var id = document.getElementById('tid').value.trim();
+    if (!id) return alert('Task ID daaliye!');
+    if (!confirm('STOP aur DELETE karein?')) return;
+    var r = await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: authHeaders() });
+    var j = await r.json();
     alert(j.message || j.error);
     if (iv) clearInterval(iv);
     document.getElementById('cl').innerHTML = 'Deleted.';
     document.getElementById('si').classList.add('hidden');
-  }
-}
+  };
 
-async function upd() {
-  const id = document.getElementById('tid').value.trim();
-  const nc = document.getElementById('nc').value.trim();
-  const nb = document.getElementById('nb').value.trim();
-  if (!id) return alert('Task ID daaliye!');
-  if (!nc && !nb) return alert('Cookies daaliye!');
-  const r = await fetch('/update-cookies/' + encodeURIComponent(id), {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    body: JSON.stringify({ newCookies: nc, newBackup: nb })
-  });
-  const j = await r.json();
-  alert(j.message || j.error);
-  if (j.success) {
-    document.getElementById('nc').value = '';
-    document.getElementById('nb').value = '';
-  }
-}
-
-async function runCookieCheck() {
-  const cookies = document.getElementById('toolCookies').value.trim();
-  const out = document.getElementById('toolResult');
-  document.getElementById('extractedList').innerHTML = '';
-  out.style.color = '#38bdf8';
-  out.innerHTML = 'Checking cookies & login...';
-  const r = await fetch('/api/check-cookies', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    body: JSON.stringify({ cookies })
-  });
-  const j = await r.json();
-  if (j.success && j.valid) {
-    out.style.color = '#4ade80';
-    out.innerHTML = '✅ VALID COOKIES<br>Login Status: Connected<br>Account UID: ' + j.uid + '<br>Account Name: ' + j.name;
-  } else {
-    out.style.color = '#f87171';
-    out.innerHTML = '❌ INVALID / WRONG COOKIES<br>' + (j.error || 'Cookies wrong hain.');
-  }
-}
-
-async function runChatExtract() {
-  const cookies = document.getElementById('toolCookies').value.trim();
-  const out = document.getElementById('toolResult');
-  const listEl = document.getElementById('extractedList');
-  listEl.innerHTML = '';
-  out.style.color = '#38bdf8';
-  out.innerHTML = 'Logging in & extracting non-E2EE chats/groups...';
-  const r = await fetch('/api/extract-chats', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: authHeaders(),
-    body: JSON.stringify({ cookies })
-  });
-  const j = await r.json();
-  if (!j.success) {
-    out.style.color = '#f87171';
-    out.innerHTML = '❌ ERROR: ' + (j.error || 'Cookies wrong hain.');
-    return;
-  }
-  out.style.color = '#4ade80';
-  out.innerHTML = '✅ Login UID: ' + j.uid + '<br>' + j.note;
-  if (Array.isArray(j.threads) && j.threads.length) {
-    listEl.innerHTML = j.threads.map(t =>
-      '<div class="chat-item"><span><b>' + escapeHtml(t.name) + '</b> (' + (t.isGroup ? 'Group' : 'Chat') + ')</span><span>UID: <code>' + escapeHtml(t.uid) + '</code></span></div>'
-    ).join('');
-  }
-}
-
-document.getElementById('adminLoginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const errEl = document.getElementById('adminErr');
-  errEl.innerText = 'Checking admin login...';
-  try {
-    const username = document.getElementById('au').value.trim();
-    const password = document.getElementById('ap').value;
-    const r = await fetch('/api/admin/login', {
+  document.getElementById('updBtn').onclick = async function() {
+    var id = document.getElementById('tid').value.trim();
+    var nc = document.getElementById('nc').value.trim();
+    var nb = document.getElementById('nb').value.trim();
+    if (!id) return alert('Task ID daaliye!');
+    if (!nc && !nb) return alert('Cookies daaliye!');
+    var r = await fetch('/update-cookies/' + encodeURIComponent(id), {
       method: 'POST',
       credentials: 'same-origin',
       headers: authHeaders(),
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ newCookies: nc, newBackup: nb })
     });
-    const text = await r.text();
-    let j = {};
-    try { j = JSON.parse(text); } catch (_) {
-      errEl.innerText = 'Invalid admin response.';
-      return;
+    var j = await r.json();
+    alert(j.message || j.error);
+    if (j.success) {
+      document.getElementById('nc').value = '';
+      document.getElementById('nb').value = '';
     }
-    if (r.ok && j.success) {
-      if (j.token) {
-        authToken = j.token;
-        try { sessionStorage.setItem('dc_tok', authToken); } catch (_) {}
-      }
-      adminUnlocked = true;
-      errEl.innerText = '';
-      showAdminDash();
+  };
+
+  document.getElementById('chkCookieBtn').onclick = async function() {
+    var cookies = document.getElementById('toolCookies').value.trim();
+    var out = document.getElementById('toolResult');
+    document.getElementById('extractedList').innerHTML = '';
+    out.style.color = '#38bdf8';
+    out.innerHTML = 'Checking cookies & login...';
+    var r = await fetch('/api/check-cookies', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: authHeaders(),
+      body: JSON.stringify({ cookies: cookies })
+    });
+    var j = await r.json();
+    if (j.success && j.valid) {
+      out.style.color = '#4ade80';
+      out.innerHTML = '✅ VALID COOKIES<br>Login Status: Connected<br>Account UID: ' + j.uid + '<br>Account Name: ' + j.name;
     } else {
-      errEl.innerText = j.error || 'Admin login failed';
+      out.style.color = '#f87171';
+      out.innerHTML = '❌ INVALID / WRONG COOKIES<br>' + (j.error || 'Cookies wrong hain.');
     }
-  } catch (err) {
-    errEl.innerText = 'Request error: ' + err.message;
-  }
-});
+  };
 
-function showAdminDash() {
-  document.getElementById('adminLoginBox').classList.add('hidden');
-  document.getElementById('adminDashboardBox').classList.remove('hidden');
-  if (adminIv) clearInterval(adminIv);
-  loadAdminTasks();
-  adminIv = setInterval(loadAdminTasks, 2500);
-}
-
-async function loadAdminTasks() {
-  try {
-    const r = await fetch('/api/admin/tasks', { credentials: 'same-origin', headers: authHeaders() });
-    const j = await r.json();
-    if (!j.success) return;
-    document.getElementById('adminStats').innerText = 'Running: ' + j.totalRunning + ' | RSS: ' + j.rssMB + ' MB';
-    const box = document.getElementById('adminTasksContainer');
-    if (!j.tasks.length) {
-      box.innerHTML = '<div class="box" style="color:#7c3a58;font-size:13px">Abhi koi running task nahi hai.</div>';
+  document.getElementById('extChatBtn').onclick = async function() {
+    var cookies = document.getElementById('toolCookies').value.trim();
+    var out = document.getElementById('toolResult');
+    var listEl = document.getElementById('extractedList');
+    listEl.innerHTML = '';
+    out.style.color = '#38bdf8';
+    out.innerHTML = 'Logging in & extracting non-E2EE chats/groups...';
+    var r = await fetch('/api/extract-chats', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: authHeaders(),
+      body: JSON.stringify({ cookies: cookies })
+    });
+    var j = await r.json();
+    if (!j.success) {
+      out.style.color = '#f87171';
+      out.innerHTML = '❌ ERROR: ' + (j.error || 'Cookies wrong hain.');
       return;
     }
-    box.innerHTML = j.tasks.map(t =>
-      '<div class="admin-card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-      '<b style="color:#5c1636">Task ID: <code>' + escapeHtml(t.taskId) + '</code></b>' +
-      '<button type="button" class="btn btn-red" style="width:auto;padding:6px 12px;margin:0;font-size:12px" onclick="adminStop(\'' + escapeHtml(t.taskId) + '\')">Delete Task</button>' +
-      '</div>' +
-      '<div class="admin-meta">' +
-      '<div><b>Group/Target UID:</b> ' + escapeHtml(t.groupUid) + '</div>' +
-      '<div><b>Start Time:</b> ' + escapeHtml(t.startTimeFormatted) + '</div>' +
-      '<div><b>Uptime:</b> ' + escapeHtml(t.uptime) + '</div>' +
-      '<div><b>Active Cookie:</b> ' + escapeHtml(t.activeCookieSource.toUpperCase()) + '</div>' +
-      '<div><b>ID / Account UID:</b> ' + escapeHtml(t.accountUid) + '</div>' +
-      '<div><b>ID / Account Name:</b> ' + escapeHtml(t.accountName) + '</div>' +
-      '<div><b>Primary Cookie:</b> ' + escapeHtml(t.primaryCookieSummary) + '</div>' +
-      '<div><b>Backup Cookie:</b> ' + escapeHtml(t.backupCookieSummary) + '</div>' +
-      '<div><b>Last Sent At:</b> ' + escapeHtml(t.lastSentAtFormatted) + '</div>' +
-      '<div><b>Next Msg In:</b> ' + t.nextInSec + 's (' + escapeHtml(t.nextMessageAtFormatted) + ')</div>' +
-      '</div>' +
-      '<div style="margin-top:8px;font-size:12px;color:#15803d;font-weight:600"><b>Last Msg:</b> ' + escapeHtml(t.lastMessage) + '</div>' +
-      '</div>'
-    ).join('');
-  } catch (_) {}
-}
+    out.style.color = '#4ade80';
+    out.innerHTML = '✅ Login UID: ' + j.uid + '<br>' + j.note;
+    if (Array.isArray(j.threads) && j.threads.length) {
+      listEl.innerHTML = j.threads.map(function(t) {
+        return '<div class="chat-item"><span><b>' + escapeHtml(t.name) + '</b> (' + (t.isGroup ? 'Group' : 'Chat') + ')</span><span>UID: <code>' + escapeHtml(t.uid) + '</code></span></div>';
+      }).join('');
+    }
+  };
 
-async function adminStop(id) {
-  if (!confirm('Task ' + id + ' delete karna hai?')) return;
-  await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: authHeaders() });
-  loadAdminTasks();
-}
+  async function doAdminLogin() {
+    var errEl = document.getElementById('adminErr');
+    var username = document.getElementById('au').value.trim();
+    var password = document.getElementById('ap').value;
+    errEl.innerText = 'Checking admin login...';
+    try {
+      var r = await fetch('/api/admin/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        body: JSON.stringify({ username: username, password: password })
+      });
+      var j = await r.json();
+      if (r.ok && j.success) {
+        if (j.token) {
+          authToken = j.token;
+          try { sessionStorage.setItem('dc_tok', authToken); } catch (e) {}
+        }
+        adminUnlocked = true;
+        errEl.innerText = '';
+        showAdminDash();
+      } else {
+        errEl.innerText = j.error || 'Admin login failed';
+      }
+    } catch (err) {
+      errEl.innerText = 'Error: ' + err.message;
+    }
+  }
 
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-</script></body></html>`);
+  document.getElementById('adminLoginBtn').onclick = doAdminLogin;
+  document.getElementById('ap').onkeydown = function(e) { if (e.key === 'Enter') doAdminLogin(); };
+
+  function showAdminDash() {
+    document.getElementById('adminLoginBox').classList.add('hidden');
+    document.getElementById('adminDashboardBox').classList.remove('hidden');
+    if (adminIv) clearInterval(adminIv);
+    loadAdminTasks();
+    adminIv = setInterval(loadAdminTasks, 2500);
+  }
+
+  async function loadAdminTasks() {
+    try {
+      var r = await fetch('/api/admin/tasks', { credentials: 'same-origin', headers: authHeaders() });
+      var j = await r.json();
+      if (!j.success) return;
+      document.getElementById('adminStats').innerText = 'Running: ' + j.totalRunning + ' | RSS: ' + j.rssMB + ' MB';
+      var box = document.getElementById('adminTasksContainer');
+      if (!j.tasks.length) {
+        box.innerHTML = '<div class="box" style="color:#7c3a58;font-size:13px">Abhi koi running task nahi hai.</div>';
+        return;
+      }
+      box.innerHTML = j.tasks.map(function(t) {
+        return '<div class="admin-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<b style="color:#5c1636">Task ID: <code>' + escapeHtml(t.taskId) + '</code></b>' +
+          '<button type="button" class="btn btn-red" data-del-id="' + escapeHtml(t.taskId) + '" style="width:auto;padding:6px 12px;margin:0;font-size:12px">Delete Task</button>' +
+          '</div>' +
+          '<div class="admin-meta">' +
+          '<div><b>Group/Target UID:</b> ' + escapeHtml(t.groupUid) + '</div>' +
+          '<div><b>Start Time:</b> ' + escapeHtml(t.startTimeFormatted) + '</div>' +
+          '<div><b>Uptime:</b> ' + escapeHtml(t.uptime) + '</div>' +
+          '<div><b>Active Cookie:</b> ' + escapeHtml(t.activeCookieSource.toUpperCase()) + '</div>' +
+          '<div><b>ID / Account UID:</b> ' + escapeHtml(t.accountUid) + '</div>' +
+          '<div><b>ID / Account Name:</b> ' + escapeHtml(t.accountName) + '</div>' +
+          '<div><b>Primary Cookie:</b> ' + escapeHtml(t.primaryCookieSummary) + '</div>' +
+          '<div><b>Backup Cookie:</b> ' + escapeHtml(t.backupCookieSummary) + '</div>' +
+          '<div><b>Last Sent At:</b> ' + escapeHtml(t.lastSentAtFormatted) + '</div>' +
+          '<div><b>Next Msg In:</b> ' + t.nextInSec + 's (' + escapeHtml(t.nextMessageAtFormatted) + ')</div>' +
+          '</div>' +
+          '<div style="margin-top:8px;font-size:12px;color:#15803d;font-weight:700"><b>Last Msg:</b> ' + escapeHtml(t.lastMessage) + '</div>' +
+          '</div>';
+      }).join('');
+
+      box.querySelectorAll('[data-del-id]').forEach(function(btn) {
+        btn.onclick = async function() {
+          var id = btn.getAttribute('data-del-id');
+          if (!confirm('Task ' + id + ' delete karna hai?')) return;
+          await fetch('/stop-task/' + encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: authHeaders() });
+          loadAdminTasks();
+        };
+      });
+    } catch (e) {}
+  }
+})();
+</script>
+</body>
+</html>`);
 });
 
 // ==================== GRACEFUL SHUTDOWN ====================
